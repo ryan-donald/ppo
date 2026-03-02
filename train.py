@@ -1,13 +1,22 @@
 import argparse
+
 from isaaclab.app import AppLauncher
+import gymnasium as gym
+import isaaclab_tasks
+from isaaclab_tasks.utils import parse_env_cfg
+
+import torch
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+import random
+import os
+
+from ppo import PPOAgent
+from env_cfgs import EnvConfig
+
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Random agent for Isaac Lab environments.")
-parser.add_argument(
-
-    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
-
-)
+parser = argparse.ArgumentParser(description="PPO agent training for IsaacLab environments.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
@@ -21,18 +30,6 @@ args_cli = parser.parse_args()
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
-
-import gymnasium as gym
-import isaaclab_tasks
-from isaaclab_tasks.utils import parse_env_cfg
-
-import torch
-import numpy as np
-import random
-import os
-
-from ppo import PPOAgent
-from env_cfgs import EnvConfig
 
 # set device before using it in class instantiation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -114,17 +111,17 @@ print(f"  Total timesteps: {max_iterations * steps_per_rollout:,}")
 
 # logging and checkpointing
 log_path = f"ryan_logs/{args_cli.task}/"
-checkpoint_path = log_path + "actor_best.pth"
+os.makedirs(log_path, exist_ok=True)
+writer = SummaryWriter(log_dir=log_path)
+checkpoint_path = log_path + "actor_final.pth"
 start_iteration = 0
 if os.path.exists(checkpoint_path):
     print(f"\nFound existing checkpoint: {checkpoint_path}")
     response = input("Load and continue training? (y/N): ")
     if response.lower() == 'y':
         agent.actor.load_state_dict(torch.load(checkpoint_path, map_location=device))
-        agent.critic.load_state_dict(torch.load(log_path + "critic_best.pth", map_location=device))
+        agent.critic.load_state_dict(torch.load(log_path + "critic_final.pth", map_location=device))
         print(f"Loaded checkpoint. Continuing training...")
-        # Also load normalization statistics to continue from where we left off
-        print("Normalization statistics preserved from checkpoint")
 
 print("\nStarting training...\n")
 
@@ -155,13 +152,17 @@ for update in range(max_iterations):
             state_obs = state
 
         # update normalization statistics
-        agent.actor.update_normalization(state_obs)
-        agent.critic.update_normalization(state_obs)
+        if env_config.use_normalization:
+            agent.actor.update_normalization(state_obs)
+            agent.critic.update_normalization(state_obs)
 
         # select action from policy
         with torch.no_grad():
             action, log_prob, entropy = agent.select_action(state_obs)
             value = agent.critic(state_obs).squeeze()
+            
+            # Get mu and std for KL divergence computation
+            mu, std = agent.actor(state_obs)
 
         # take step in environment
         next_state, reward, terminated, truncated, info = env.step(action)
@@ -175,13 +176,18 @@ for update in range(max_iterations):
         dones[step] = done.float().to(device)
         values[step] = value.to(device)
         entropies[step] = entropy.to(device)
+        mus[step] = mu.to(device)
+        stds[step] = std.to(device)
 
         state = next_state
 
         # accumulate episode rewards and lengths
         current_episode_rewards += rewards[step]
         current_episode_lengths += 1
-        
+
+        # accumulate per-term rewards: _step_reward shape is (num_envs, num_terms)
+        current_term_rewards += reward_manager._step_reward.detach()
+
         episode_done_mask = dones[step].bool()
         
         # for any completed episodes, store their rewards and lengths
@@ -194,6 +200,12 @@ for update in range(max_iterations):
             
             current_episode_rewards[episode_done_mask] = 0
             current_episode_lengths[episode_done_mask] = 0
+
+            # store per-term episode sums for completed envs
+            for t_idx, t_name in enumerate(term_names):
+                completed_term = current_term_rewards[episode_done_mask, t_idx]
+                episode_term_rewards[t_name].extend(completed_term.cpu().numpy().tolist())
+            current_term_rewards[episode_done_mask] = 0
 
     # bootstrap next value for GAE
     with torch.no_grad():
@@ -208,7 +220,7 @@ for update in range(max_iterations):
     advantages, returns = agent.compute_gae(rewards, values, dones, next_value)
 
     # update actor and critic networks
-    mean_kl = agent.update(states, actions, log_probs, returns, advantages, values, epochs=num_learning_epochs, batch_size=batch_size)
+    mean_kl = agent.update(states, actions, log_probs, returns, advantages, values, mus, stds, epochs=num_learning_epochs, batch_size=batch_size)
 
     # logging
     avg_reward = np.mean(episode_rewards[-100:]) if len(episode_rewards) >= 100 else np.mean(episode_rewards) if episode_rewards else 0.0
@@ -217,13 +229,26 @@ for update in range(max_iterations):
     current_timestep = (update + 1) * steps_per_rollout
     plot_data.append((current_timestep, avg_reward))
     
-    # print progress every 10 updates
-    if (update + 1) % 10 == 0:
-        recent_rewards = episode_rewards[-100:] if len(episode_rewards) >= 100 else episode_rewards
-        min_reward = np.min(recent_rewards) if recent_rewards else 0
-        max_reward = np.max(recent_rewards) if recent_rewards else 0
-        std_reward = np.std(recent_rewards) if len(recent_rewards) > 1 else 0
+    # logging every update — tensorboard, print every 10
+    recent_rewards = episode_rewards[-100:] if len(episode_rewards) >= 100 else episode_rewards
+    min_reward = np.min(recent_rewards) if recent_rewards else 0
+    max_reward = np.max(recent_rewards) if recent_rewards else 0
+    std_reward = np.std(recent_rewards) if len(recent_rewards) > 1 else 0
 
+    writer.add_scalar("train/avg_reward", avg_reward, update + 1)
+    writer.add_scalar("train/min_reward", min_reward, update + 1)
+    writer.add_scalar("train/max_reward", max_reward, update + 1)
+    writer.add_scalar("train/std_reward", std_reward, update + 1)
+    writer.add_scalar("train/kl", mean_kl, update + 1)
+    writer.add_scalar("train/lr", agent.current_lr, update + 1)
+    writer.add_scalar("train/episodes", len(episode_rewards), update + 1)
+
+    for t_name in term_names:
+        recent_term = episode_term_rewards[t_name][-100:] if len(episode_term_rewards[t_name]) >= 100 else episode_term_rewards[t_name]
+        avg_term = np.mean(recent_term) if recent_term else 0.0
+        writer.add_scalar(f"rewards/{t_name}", avg_term, update + 1)
+
+    if (update + 1) % 10 == 0:
         print(f"Update {update + 1}/{max_iterations} | "
               f"Avg: {avg_reward:.2f} ± {std_reward:.2f} | "
               f"Range: [{min_reward:.2f}, {max_reward:.2f}] | "
@@ -246,6 +271,7 @@ for update in range(max_iterations):
         print(f"Checkpoint saved at iteration {update+1}")
 
 env.close()
+writer.close()
 
 # save final model
 torch.save(agent.actor.state_dict(), log_path + "actor_final.pth")
@@ -257,13 +283,11 @@ np.savez(
     timesteps=np.array([x[0] for x in plot_data]),
     avg_rewards=np.array([x[1] for x in plot_data]),
     episode_rewards=np.array(episode_rewards),
-    episode_lengths=np.array(episode_lengths)
+    episode_lengths=np.array(episode_lengths),
 )
-print(f"\nTraining data saved to {log_path}training_data.npz")
+print(f"\n✓ Training data saved to {log_path}training_data.npz")
 
 print(f"\nTraining complete! Final model saved.")
 print(f"Total episodes: {len(episode_rewards)}")
 if episode_rewards:
     print(f"Final average reward (last 100 episodes): {np.mean(episode_rewards[-100:]):.2f}")
-
-reward_steps = episode_rewards

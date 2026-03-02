@@ -21,13 +21,17 @@ class PPOAgent:
                  max_grad_norm=1.0, 
                  desired_kl=0.01, 
                  schedule_type="adaptive", 
-                 entropy_coef=0.001):
+                 entropy_coef=0.001,
+                 use_normalization=True):
 
         # initialization of networks and optimizer
         self.device = device
         self.actor = Actor(state_dim, action_dim, hidden_dims).to(device)
         self.critic = Critic(state_dim, hidden_dims).to(device)
         self.optimizer = optim.Adam(list(self.actor.parameters()) + list(self.critic.parameters()), lr=lr)
+
+        # self.actor = torch.compile(self.actor)
+        # self.critic = torch.compile(self.critic)
 
         # hyperparameters
         self.gamma = gamma
@@ -59,20 +63,20 @@ class PPOAgent:
         log_prob = dist.log_prob(action).sum(dim=-1)
         return action, log_prob, entropy
     
+    # @torch.compile
     def compute_gae(self, rewards, values, dones, next_value):
-        # computes normalized generalized advantage estimates (GAE)
+    # computes normalized generalized advantage estimates (GAE)
+        
+        values_extended = torch.cat([values, next_value.unsqueeze(0)], dim=0)
+        
+        deltas = rewards + self.gamma * values_extended[1:] * (1-dones) - values_extended[:-1]
+
         num_steps = rewards.shape[0]
         advantages = torch.zeros_like(rewards)
         gae = torch.zeros_like(next_value)
 
         for step in reversed(range(num_steps)):
-            if step == num_steps - 1:
-                next_val = next_value
-            else:
-                next_val = values[step + 1]
-                
-            delta = rewards[step] + self.gamma * next_val * (1 - dones[step]) - values[step]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[step]) * gae
+            gae = deltas[step] + self.gamma * self.gae_lambda * (1 - dones[step]) * gae
             advantages[step] = gae
         
         returns = advantages + values
@@ -81,7 +85,8 @@ class PPOAgent:
 
         return advantages, returns
 
-    def update(self, states, actions, log_probs_old, returns, advantages, values_old, epochs=4, batch_size=64):
+    # @torch.compile
+    def update(self, states, actions, log_probs_old, returns, advantages, values_old, mus_old, stds_old, epochs=4, batch_size=64):
         # updates Actor and Critic networks using the PPO algorithm
 
         # batch data
@@ -91,15 +96,22 @@ class PPOAgent:
         b_returns = returns.reshape(-1)
         b_advantages = advantages.reshape(-1)
         b_values_old = values_old.reshape(-1)
+        b_mus_old = mus_old.reshape(-1, mus_old.shape[-1])
+        b_stds_old = stds_old.reshape(-1, stds_old.shape[-1])
 
         dataset_size = b_states.shape[0]
 
         mean_kl = 0.0
         num_updates = 0
+        stop_early = False
 
         # training loop
         for epoch in range(epochs):
-            
+
+            # early stopping for KL divergence
+            if stop_early:
+                break
+
             # randomizes batch data
             indices = np.random.permutation(dataset_size)
 
@@ -114,19 +126,34 @@ class PPOAgent:
                 batch_returns = b_returns[batch_indices]
                 batch_advantages = b_advantages[batch_indices]
                 batch_values_old = b_values_old[batch_indices]
+                batch_mus_old = b_mus_old[batch_indices]
+                batch_stds_old = b_stds_old[batch_indices]
 
                 # calculate log_probs for current policy
                 mu, std = self.actor(batch_states)
+                
                 dist = Normal(mu, std)
                 log_probs = dist.log_prob(batch_actions).sum(dim=-1)
                 entropy = dist.entropy().sum(dim=-1).mean()
 
-                # compute KL divergence
+                # full KL divergence
                 with torch.no_grad():
-                    ratio = torch.exp(log_probs - batch_log_probs_old)
-                    kl = ((ratio - 1) - torch.log(ratio)).mean()
-                    mean_kl += kl.item()
+                    kl = torch.sum(
+                        torch.log(std / (batch_stds_old + 1e-8) + 1e-8)
+                        + (torch.square(batch_stds_old) + torch.square(batch_mus_old - mu))
+                        / (2.0 * torch.square(std) + 1e-8)
+                        - 0.5,
+                        dim=-1,
+                    )
+                    batch_kl = kl.mean().item()
+                    mean_kl += batch_kl
                     num_updates += 1
+
+                    # early stopping: if KL has already exceeded the threshold, skip
+                    # remaining mini-batches and epochs to avoid over-updating the policy
+                    if batch_kl > self.desired_kl * 2.0:
+                        stop_early = True
+                        break
 
                 # compute surrogate loss
                 ratios = torch.exp(log_probs - batch_log_probs_old)
@@ -151,6 +178,7 @@ class PPOAgent:
                 # gradient descent step, with a clipped gradient norm
                 self.optimizer.zero_grad()
                 loss.backward()
+                
                 torch.nn.utils.clip_grad_norm_(
                     list(self.actor.parameters()) + list(self.critic.parameters()),
                     self.max_grad_norm

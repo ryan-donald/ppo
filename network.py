@@ -8,7 +8,7 @@ from normalization import EmpiricalNormalization
 
 class Actor(nn.Module):
     
-    def __init__(self, state_dim, action_dim, hidden_dims=[64, 64], use_normalization=True):
+    def __init__(self, state_dim, action_dim, hidden_dims=[64, 64], use_normalization=True, std=0.3):
         super(Actor, self).__init__()
         
         self.use_normalization = use_normalization
@@ -23,7 +23,7 @@ class Actor(nn.Module):
         
         self.hidden_layers = nn.ModuleList(layers)
         self.output_layer = nn.Linear(prev_dim, action_dim)
-        self.log_std = nn.Parameter(torch.ones(action_dim) * 0.0)
+        self.log_std = nn.Parameter(torch.ones(action_dim) * np.log(std))
 
         self._init_weights()
 
