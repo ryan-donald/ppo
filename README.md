@@ -1,3 +1,6 @@
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=fff)](https://docs.python.org/3/whatsnew/3.11.html)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.7-ee4c2c?logo=pytorch&logoColor=white)](https://github.com/pytorch/pytorch/releases/tag/v2.7.0)
+
 This is a repository containing my implementation of PPO, specifically for use in Nvidia's IsaacLab. I initially developed this algorithm for use with Gymnasium, and this implementation could be utilized with Gymnasium or other environments, mainly with changes needed in the *train.py* file.  
   
 The main structure of this repository is as follows:  
