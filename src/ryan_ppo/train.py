@@ -29,8 +29,8 @@ import random
 import os
 from torch.utils.tensorboard import SummaryWriter
 
-from ppo import PPOAgent
-from env_cfgs import EnvConfig
+from ryan_ppo.ppo import PPOAgent
+from ryan_ppo.env_cfgs import EnvConfig
 
 # set device before using it in class instantiation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

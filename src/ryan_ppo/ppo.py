@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.distributions import Normal
 import torch.optim as optim
 import numpy as np
-from network import Actor, Critic
+from ryan_ppo.network import Actor, Critic
 
 
 class PPOAgent:
