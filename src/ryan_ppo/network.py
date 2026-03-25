@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 import numpy as np
 
-from ryan_ppo.normalization import EmpiricalNormalization
+from rsl_rl.modules import EmpiricalNormalization
 
 
 class Actor(nn.Module):
