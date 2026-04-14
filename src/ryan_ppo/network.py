@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +11,12 @@ from rsl_rl.modules import EmpiricalNormalization
 
 class Actor(nn.Module):
 
-    def __init__(self, state_dim, action_dim, hidden_dims=[64, 64], use_normalization=True, std=0.3):
+    def __init__(self,
+                 state_dim: int,
+                 action_dim: int,
+                 hidden_dims: list[int] = [64, 64],
+                 use_normalization: bool = True,
+                 std: float = 0.3) -> None:
         super(Actor, self).__init__()
 
         self.use_normalization = use_normalization
@@ -28,7 +35,7 @@ class Actor(nn.Module):
 
         self._init_weights()
 
-    def _init_weights(self):
+    def _init_weights(self) -> None:
         # orthogonal initialization for all layers. output layer has small gain 0.01
         for name, module in self.named_modules():
             if name != "output_layer" and isinstance(module, nn.Linear):
@@ -38,7 +45,7 @@ class Actor(nn.Module):
                 nn.init.orthogonal_(module.weight, gain=0.01)
                 nn.init.constant_(module.bias, 0.0)
 
-    def forward(self, x):
+    def forward(self, x: torch.tensor) -> tuple[torch.tensor, torch.tensor]:
         # normalize observations, then forward pass
         if self.use_normalization:
             x = self.obs_normalizer(x)
@@ -49,7 +56,7 @@ class Actor(nn.Module):
         std = torch.exp(self.log_std)
         return mu, std
 
-    def update_normalization(self, obs):
+    def update_normalization(self, obs: torch.tensor) -> None:
         # update observation normalization statistics
         if self.use_normalization:
             self.obs_normalizer.update(obs)
@@ -57,7 +64,10 @@ class Actor(nn.Module):
 
 class Critic(nn.Module):
 
-    def __init__(self, state_dim, hidden_dims=[64, 64], use_normalization=True):
+    def __init__(self,
+                 state_dim: int,
+                 hidden_dims: list[int] = [64, 64],
+                 use_normalization: bool = True) -> None:
         super(Critic, self).__init__()
 
         self.use_normalization = use_normalization
@@ -75,7 +85,7 @@ class Critic(nn.Module):
 
         self._init_weights()
 
-    def _init_weights(self):
+    def _init_weights(self) -> None:
         # orthogonal initialization for all layers. output layer has gain 1
         for name, module in self.named_modules():
             if name != "output_layer" and isinstance(module, nn.Linear):
@@ -85,7 +95,7 @@ class Critic(nn.Module):
                 nn.init.orthogonal_(module.weight, gain=1.0)
                 nn.init.constant_(module.bias, 0.0)
 
-    def forward(self, x):
+    def forward(self, x: torch.tensor) -> torch.tensor:
         if self.use_normalization:
             x = self.obs_normalizer(x)
 
@@ -94,7 +104,7 @@ class Critic(nn.Module):
         x = self.output_layer(x)
         return x
 
-    def update_normalization(self, obs):
+    def update_normalization(self, obs: torch.tensor) -> None:
         # update observation normalization statistics
         if self.use_normalization:
             self.obs_normalizer.update(obs)

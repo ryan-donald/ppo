@@ -1,28 +1,32 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
 import torch.optim as optim
+
 import numpy as np
+
 from ryan_ppo.network import Actor, Critic
 
 
 class PPOAgent:
 
     def __init__(self,
-                 state_dim,
-                 action_dim,
-                 device=torch.device("cpu"),
-                 lr=1e-3,
-                 gamma=0.99,
-                 gae_lambda=0.95,
-                 value_coef=0.5,
-                 clip_epsilon=0.2,
-                 hidden_dims=[64, 64],
-                 max_grad_norm=1.0,
-                 desired_kl=0.01,
-                 schedule_type="adaptive",
-                 entropy_coef=0.001,
-                 use_normalization=True):
+                 state_dim: int,
+                 action_dim: int,
+                 device: torch.device = torch.device("cpu"),
+                 lr: float = 1e-3,
+                 gamma: float = 0.99,
+                 gae_lambda: float = 0.95,
+                 value_coef: float = 0.5,
+                 clip_epsilon: float = 0.2,
+                 hidden_dims: list[int] = [64, 64],
+                 max_grad_norm: float = 1.0,
+                 desired_kl: float = 0.01,
+                 schedule_type: str = "adaptive",
+                 entropy_coef: float = 0.001,
+                 use_normalization: bool = True) -> None:
 
         # initialization of networks and optimizer
         self.device = device
@@ -47,7 +51,7 @@ class PPOAgent:
 
         self.update_count = 0
 
-    def select_action(self, state_obs):
+    def select_action(self, state_obs: torch.tensor) -> None:
         # selects action based upon an observation and the current policy,
         # returns action, log_prob, entropy
         if not torch.is_tensor(state_obs):
@@ -66,7 +70,11 @@ class PPOAgent:
         return action, log_prob, entropy
 
     # @torch.compile
-    def compute_gae(self, rewards, values, dones, next_value):
+    def compute_gae(self,
+                    rewards: torch.tensor,
+                    values: torch.tensor,
+                    dones: torch.tensor,
+                    next_value: torch.tensor) -> tuple[torch.tensor, torch.tensor]:
         # computes normalized generalized advantage estimates (GAE)
 
         values_extended = torch.cat([values, next_value.unsqueeze(0)], dim=0)
@@ -91,7 +99,17 @@ class PPOAgent:
         return advantages, returns
 
     # @torch.compile
-    def update(self, states, actions, log_probs_old, returns, advantages, values_old, mus_old, stds_old, epochs=4, batch_size=64):
+    def update(self,
+               states: torch.tensor,
+               actions: torch.tensor,
+               log_probs_old: torch.tensor,
+               returns: torch.tensor,
+               advantages: torch.tensor,
+               values_old: torch.tensor,
+               mus_old: torch.tensor,
+               stds_old: torch.tensor,
+               epochs: int = 4,
+               batch_size: int = 64) -> float:
         # updates Actor and Critic networks using the PPO algorithm
 
         # batch data

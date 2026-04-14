@@ -1,6 +1,10 @@
+from __future__ import annotations
+import argparse
+
+
 class EnvConfig:
     # configuration parameters for PPO training in different IsaacLab environments
-    def __init__(self, args_cli):
+    def __init__(self, args_cli: argparse.Namespace) -> None:
         self.args_cli = args_cli
 
         # default parameters
