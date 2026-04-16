@@ -25,9 +25,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 import torch
 import numpy as np
 import random
+from datetime import datetime
 
 import os
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 
 from ryan_ppo.ppo import PPOAgent
 from ryan_ppo.env_cfgs import EnvConfig
@@ -111,10 +112,11 @@ print(f"  Total timesteps: {max_iterations * steps_per_rollout:,}")
 
 
 # logging and checkpointing
-log_path = f"ryan_logs/{args_cli.task}/"
+run_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+log_path = f"ppo_logs/{args_cli.task}/{run_id}/"
 os.makedirs(log_path, exist_ok=True)
-writer = SummaryWriter(log_dir=log_path)
 checkpoint_path = log_path + "actor_final.pth"
+
 start_iteration = 0
 if os.path.exists(checkpoint_path):
     print(f"\nFound existing checkpoint: {checkpoint_path}")
@@ -125,6 +127,8 @@ if os.path.exists(checkpoint_path):
         agent.critic.load_state_dict(torch.load(
             log_path + "critic_final.pth", map_location=device))
         print(f"Loaded checkpoint. Continuing training...")
+
+wandb.init(project="PPO IsaacLab", name=f'{args_cli.task}_{run_id}')
 
 print("\nStarting training...\n")
 
@@ -255,19 +259,19 @@ for update in range(max_iterations):
     max_reward = np.max(recent_rewards) if recent_rewards else 0
     std_reward = np.std(recent_rewards) if len(recent_rewards) > 1 else 0
 
-    writer.add_scalar("train/avg_reward", avg_reward, update + 1)
-    writer.add_scalar("train/min_reward", min_reward, update + 1)
-    writer.add_scalar("train/max_reward", max_reward, update + 1)
-    writer.add_scalar("train/std_reward", std_reward, update + 1)
-    writer.add_scalar("train/kl", mean_kl, update + 1)
-    writer.add_scalar("train/lr", agent.current_lr, update + 1)
-    writer.add_scalar("train/episodes", len(episode_rewards), update + 1)
+    wandb.log({"train/avg_reward": avg_reward})
+    wandb.log({"train/min_reward": min_reward})
+    wandb.log({"train/max_reward": max_reward})
+    wandb.log({"train/std_reward": std_reward})
+    wandb.log({"train/kl": mean_kl})
+    wandb.log({"train/lr": agent.current_lr})
+    wandb.log({"train/episodes": len(episode_rewards)})
 
     for t_name in term_names:
         recent_term = episode_term_rewards[t_name][-100:] if len(
             episode_term_rewards[t_name]) >= 100 else episode_term_rewards[t_name]
         avg_term = np.mean(recent_term) if recent_term else 0.0
-        writer.add_scalar(f"rewards/{t_name}", avg_term, update + 1)
+        wandb.log({f"rewards/{t_name}": avg_term})
 
     if (update + 1) % 10 == 0:
         print(f"Update {update + 1}/{max_iterations} | "
@@ -294,7 +298,7 @@ for update in range(max_iterations):
         print(f"Checkpoint saved at iteration {update+1}")
 
 env.close()
-writer.close()
+wandb.finish()
 
 # save final model
 torch.save(agent.actor.state_dict(), log_path + "actor_final.pth")
