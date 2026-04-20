@@ -59,7 +59,7 @@ class EnvConfig:
             self.gamma = 0.98
             self.max_grad_norm = 1.0
             self.use_normalization = True
-            self.desired_kl = 0.016
+            self.desired_kl = 0.08
         elif "Repose" in args_cli.task:
             self.lr = 1e-3
             self.num_learning_epochs = 5
