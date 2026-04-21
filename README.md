@@ -9,8 +9,8 @@ To use this package, follow the steps below:
 * Install and setup Nvidia's IsaacLab, found [here](https://github.com/isaac-sim/IsaacLab).
 * Clone this repository.
 * Run the command "pip install -e ." within this repository.
-* You are all set and can now train agents within IsaacLab using this package. An example training run command, run from the "IsaacLab/" directory, is below:
-* "./isaaclab.sh -p -m ryan_ppo.train --task Isaac-Reach-SO-ARM101-Normalized-v0 --num_envs 2048 --headless".
+* You are all set and can now train agents within IsaacLab using this package. An example training run command is below:
+* "python -m ryan_ppo.isaaclab.train --task Ryan-Reach-SO-ARM101-Normalized-v0 --num_envs 2048 --headless".
 * To perform a parameter sweep, create a YAML description file in the format of those in "cfg/sweeps/".
 * Then run "wandb sweep <sweep config file>" followed by "wandb agent <username>/<project name>/<sweep id>".
 
