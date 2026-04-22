@@ -37,17 +37,24 @@ def test_actor_forward():
 
 
 def test_actor_weights_init():
-    # checks that the weights are initialized to non-zero values, 
-    # and that the bias' are initialized to zero.
+    # checks that the weights and biases are initialized correctly.
     state_dim = 4
     action_dim = 4
     hidden_dims = [2, 2]
     actor = Actor(state_dim, action_dim, hidden_dims)
 
     for name, module in actor.named_modules():
-        if isinstance(module, nn.Linear):
-            assert not torch.allclose(
-                module.weight, torch.zeros_like(module.weight))
+
+        if name != "output_layer" and isinstance(module, nn.Linear):
+            assert torch.allclose(torch.linalg.norm(module.weight, ord=2),
+                                  torch.sqrt(torch.tensor(2)),
+                                  rtol=1e-4, atol=1e-4)
+            assert torch.allclose(module.bias, torch.zeros_like(module.bias))
+
+        elif name == "output_layer" and isinstance(module, nn.Linear):
+            assert torch.allclose(torch.linalg.norm(module.weight, ord=2),
+                                  torch.tensor(0.01),
+                                  rtol=1e-4, atol=1e-4)
             assert torch.allclose(module.bias, torch.zeros_like(module.bias))
 
 
@@ -81,14 +88,22 @@ def test_critic_forward():
 
 
 def test_critic_weights_init():
-    # checks that the weights are initialized to non-zero values, 
+    # checks that the weights are initialized to non-zero values,
     # and that the bias' are initialized to zero.
     state_dim = 4
     hidden_dims = [2, 2]
     critic = Critic(state_dim, hidden_dims)
 
     for name, module in critic.named_modules():
-        if isinstance(module, nn.Linear):
-            assert not torch.allclose(
-                module.weight, torch.zeros_like(module.weight))
+
+        if name != "output_layer" and isinstance(module, nn.Linear):
+            assert torch.allclose(torch.linalg.norm(module.weight, ord=2),
+                                  torch.sqrt(torch.tensor(2)),
+                                  rtol=1e-4, atol=1e-4)
+            assert torch.allclose(module.bias, torch.zeros_like(module.bias))
+
+        elif name == "output_layer" and isinstance(module, nn.Linear):
+            assert torch.allclose(torch.linalg.norm(module.weight, ord=2),
+                                  torch.tensor(1.0),
+                                  rtol=1e-4, atol=1e-4)
             assert torch.allclose(module.bias, torch.zeros_like(module.bias))
