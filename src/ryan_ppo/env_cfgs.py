@@ -54,9 +54,10 @@ class EnvConfig:
             self.lr = 5e-4
             self.hidden_dims = [256, 128, 64]
             self.num_learning_epochs = 5
-            self.max_iterations = 3000
-            self.entropy_coef = 1e-2
-            self.gamma = 0.98
+            self.max_iterations = 5000
+            self.gamma = 0.95
+            self.entropy_coef = 0.005
+            self.clip_epsilon = 0.2
             self.max_grad_norm = 1.0
             self.use_normalization = True
             self.desired_kl = 0.008

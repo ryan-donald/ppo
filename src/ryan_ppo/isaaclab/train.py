@@ -292,27 +292,29 @@ def train(args_cli):
         #         f"Steps: {(update + 1) * steps_per_rollout:,}")
 
         # save best model when reward improves
-        # if len(episode_rewards) >= 100 and avg_reward > curr_max:
-        #     curr_max = avg_reward
-        #     torch.save(agent.actor.state_dict(), log_path + "actor_best.pth")
-        #     torch.save(agent.critic.state_dict(), log_path + "critic_best.pth")
-        #     print(f"New best model saved with average reward: {curr_max:.2f}")
+        if (args_cli.save):
+            if len(episode_rewards) >= 100 and avg_reward > curr_max:
+                curr_max = avg_reward
+                torch.save(agent.actor.state_dict(), log_path + "actor_best.pth")
+                torch.save(agent.critic.state_dict(), log_path + "critic_best.pth")
+                print(f"New best model saved with average reward: {curr_max:.2f}")
 
-        # save checkpoint every 100 iterations
-        # if (update + 1) % 100 == 0:
-        #     torch.save(agent.actor.state_dict(), log_path +
-        #             f"actor_iter_{update+1}.pth")
-        #     torch.save(agent.critic.state_dict(), log_path +
-        #             f"critic_iter_{update+1}.pth")
-        #     print(f"Checkpoint saved at iteration {update+1}")
+            # save checkpoint every 100 iterations
+            if (update + 1) % 100 == 0:
+                torch.save(agent.actor.state_dict(), log_path +
+                        f"actor_iter_{update+1}.pth")
+                torch.save(agent.critic.state_dict(), log_path +
+                        f"critic_iter_{update+1}.pth")
+                print(f"Checkpoint saved at iteration {update+1}")
 
     env.close()
     wandb.finish()
     simulation_app.close()
 
     # save final model
-    # torch.save(agent.actor.state_dict(), log_path + "actor_final.pth")
-    # torch.save(agent.critic.state_dict(), log_path + "critic_final.pth")
+    if (args_cli.save):
+        torch.save(agent.actor.state_dict(), log_path + "actor_final.pth")
+        torch.save(agent.critic.state_dict(), log_path + "critic_final.pth")
 
     # # save training data for plotting
     # np.savez(
@@ -338,6 +340,8 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default=None, help="Name of the task.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--sweep", action="store_true", help="Enable WandB parameter sweeping.")
+    parser.add_argument("--save", action="store_true", help="Enable saving of agents (Policy and Value networks)" \
+                                                            "every 100 updates, new best performance, and at the end")
 
     # append AppLauncher cli args
     AppLauncher.add_app_launcher_args(parser)
