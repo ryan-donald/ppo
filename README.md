@@ -1,7 +1,9 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=fff)](https://docs.python.org/3/whatsnew/3.11.html)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.7-ee4c2c?logo=pytorch&logoColor=white)](https://github.com/pytorch/pytorch/releases/tag/v2.7.0)
 # PPO for IsaacLab
-This is a repository containing my implementation of the Proximal Policy Optimizatino (PPO) Reinforcement Learning algorithm, specifically for use in Nvidia's IsaacLab. I initially developed and tested this algorithm within gymnasium, and the base algorithm will still work in those environments, but the *train.py* and *play.py* scripts are specific to IsaacLab, and will need some edits. 
+This is a repository containing my implementation of the Proximal Policy Optimizatino (PPO) Reinforcement Learning algorithm, specifically for use in Nvidia's IsaacLab. I initially developed and tested this algorithm within gymnasium, and then moved to IsaacLab. The base algorithm is not specific to the environment, and will work with any environment as long as the batch data is in the expected format.
+
+![sim](images/so101_reach_sim.gif)
 
 # Quickstart
 To use this package, follow the steps below:
@@ -11,14 +13,22 @@ To use this package, follow the steps below:
 * Run the command "pip install -e ." within this repository.
 * You are all set and can now train agents within IsaacLab using this package. An example training run command is below:
 * "python -m ryan_ppo.isaaclab.train --task Ryan-Reach-SO-ARM101-Normalized-v0 --num_envs 2048 --headless".
-* To perform a parameter sweep, create a YAML description file in the format of those in "cfg/sweeps/".
-* Then run "wandb sweep <sweep config file>" followed by "wandb agent <username>/<project name>/<sweep id>".
 
 # Features
 Fully functional PPO agent, with a configuration file where you can set hyperparameters depending on the task you are running. Additionally, training runs are tracked and stored utilizing Weights and Biases, allowing for easy performance tracking and comparison between runs. 
 
-# Sim2Real
+## Multiple Environments
+The base algorithm, defined in the files within the 'src/' directory, are portable to any gym-style environment. Within the 'src/' directory is an 'isaaclab/' directory containing a *train.py* and *play.py* file, which implement the algorithm specifically for IsaacLab. To use the algorithm in another set of environments, simply create your own *train.py* and *play.py* files for those environments in this format. 
+
+## Weights and Biases Parameter Sweeping
+This implementation supports parameter sweeping via Weights and Biases. To do this, create a YAML description file in the format of those in "cfg/sweeps/". Within this file, define either a set of discrete values or a distribution for each parameter that you want to be swept. Ensure that *train.py* contains checks for all of the parameters that are being swept to ensure they are actually being used in the runs. After this, run "wandb sweep <sweep config file>" followed by "wandb agent <username>/<project name>/<sweep id>". The results will be logged via Weights and Biases. Shown below is an example plot showing 50 different runs with a reach task, sweeping over a handful of parameters.
+
+![sweep](images/so101_reach_sweep.png)
+
+## Sim2Real
 Using this package, I have been able to perform Sim2Real transfer of a Reach agent for the open source SO-ARM101 robot. Specifics about that process can be found [here](https://ryan-donald.github.io/portfolio/1-PPO_Sim2Real/), and my script can be found [here](https://github.com/ryan-donald/so101_ppo).
+
+![sim2real](images/so101_reach_sim2real.gif)
 
 # Script Structure
 The main structure of this repository is as follows:  

@@ -1,0 +1,34 @@
+program: src/ryan_ppo/isaaclab/train.py
+
+method: bayes
+
+metric:
+  name: train/avg_reward
+  goal: maximize
+
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 0.00005
+    max: 0.005
+  entropy_coef:
+    values: [0.05, 0.01, 0.005, 0.001]
+  gamma:
+    values: [0.99, 0.98, 0.95]
+  num_learning_epochs:
+    values: [3, 5, 8]
+  clip_epsilon:
+    values: [0.1, 0.2]
+  desired_kl:
+    values: [0.032, 0.016, 0.008]
+
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--task"
+  - "Isaac-Lift-Cube-SO-ARM101-Normalized-v0"
+  - "--headless"
+  - "--num_envs"
+  - "512"
+  - "--sweep"
