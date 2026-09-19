@@ -23,7 +23,7 @@ class CheckpointSaver:
         self.best_reward = -float("inf")
         self.log_path.mkdir(parents=True, exist_ok=True)
 
-    def _save_weights(self, agent, suffix: str) -> None:
+    def save_weights(self, agent, suffix: str) -> None:
         torch.save(agent.actor.state_dict(), self.log_path / f"actor_{suffix}.pth")
         torch.save(agent.critic.state_dict(), self.log_path / f"critic_{suffix}.pth")
 
@@ -33,11 +33,11 @@ class CheckpointSaver:
         # saves checkpoints if this iteration requires it. i.e. best reward, periodic.
         if num_episodes > 0 and avg_reward > self.best_reward:
             self.best_reward = avg_reward
-            self._save_weights(agent, "best")
+            self.save_weights(agent, "best")
 
         # periodic weight snapshots and a rolling resumable checkpoint
         if iteration % self.SNAPSHOT_EVERY == 0:
-            self._save_weights(agent, f"iter_{iteration}")
+            self.save_weights(agent, f"iter_{iteration}")
             agent.save_checkpoint(self.log_path / "checkpoint_latest.pth", iteration)
 
         # full checkpoint bundles at requested iterations, for resuming or
@@ -48,5 +48,5 @@ class CheckpointSaver:
             )
 
     def save_final(self, agent, iteration: int) -> None:
-        self._save_weights(agent, "final")
+        self.save_weights(agent, "final")
         agent.save_checkpoint(self.log_path / "checkpoint_final.pth", iteration)

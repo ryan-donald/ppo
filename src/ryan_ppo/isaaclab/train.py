@@ -27,6 +27,7 @@ def train(args_cli):
     from ryan_ppo.checkpointing import CheckpointSaver
     from ryan_ppo.config import TrainConfig
     from ryan_ppo.ppo import PPOAgent
+    from ryan_ppo.rollout import RolloutStepper
     from ryan_ppo.storage import RolloutStorage
     from ryan_ppo.tracking import EpisodeTracker, TrainingLogger
     from ryan_ppo.utils import (
@@ -64,6 +65,8 @@ def train(args_cli):
 
     if args_cli.max_iterations is not None:
         cfg.max_iterations = args_cli.max_iterations
+    if args_cli.num_mini_batches is not None:
+        cfg.num_mini_batches = args_cli.num_mini_batches
 
     run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run = wandb.init(
@@ -87,6 +90,17 @@ def train(args_cli):
     # reset environment
     state, info = env.reset()
     num_envs = env.unwrapped.num_envs
+
+    # record config to wandb
+    run.config.update(
+        {
+            **vars(cfg),
+            "task": args_cli.task,
+            "num_envs": num_envs,
+            "seed": args_cli.seed,
+        },
+        allow_val_change=True,
+    )
 
     # staggers episode starts, in whole rollouts so envs that only end in truncation
     # don't result in resets every step.
@@ -143,6 +157,8 @@ def train(args_cli):
     storage = RolloutStorage(
         num_steps, num_envs, state_dim, action_dim, len(term_names), device
     )
+    # handles rollout stepping, allows for graph capture for performance.
+    rollout = RolloutStepper(agent, storage, step_dt)
     rollout_timer = PhaseTimer(device)
     preparation_timer = PhaseTimer(device)
     update_timer = PhaseTimer(device)
@@ -150,35 +166,18 @@ def train(args_cli):
     for update in range(start_iter, cfg.max_iterations):
         rollout_timer.start()
         for step in range(num_steps):
-            # handle both Dict and Box observation spaces
-            state_obs = policy_obs(state)
-
             # select action from policy
-            with profiler.zone(2, "select_action"), torch.no_grad():
-                action, log_prob, mu, std = agent.select_action(state_obs)
+            with profiler.zone(2, "select_action"):
+                action = rollout.act(policy_obs(state))
 
             # take step in environment
             with profiler.zone(3, "env_step"):
-                next_state, reward, terminated, truncated, info = env.step(action)
-
-            # store steps where envs finished, either terminated or truncated
-            done = torch.logical_or(terminated, truncated)
+                state, reward, terminated, truncated, info = env.step(action)
 
             # store rollout data.
-            storage.add(
-                step,
-                state=state_obs,
-                action=action,
-                log_prob=log_prob,
-                reward=reward,
-                done=done.float(),
-                trunc=truncated.float(),
-                term_reward=reward_manager._step_reward.detach() * step_dt,
-                mu=mu,
+            rollout.record(
+                step, reward, terminated, truncated, reward_manager._step_reward
             )
-
-            # update state for next step
-            state = next_state
 
         rollout_timer.stop()
         preparation_timer.start()
@@ -208,7 +207,7 @@ def train(args_cli):
                 returns=returns,
                 advantages=advantages,
                 values_old=values,
-                std_old=std,
+                std_old=rollout.std,
             )
             mean_kl = agent.update(
                 batch,
@@ -270,6 +269,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Override the config file's max_iterations.",
+    )
+    parser.add_argument(
+        "--num_mini_batches",
+        type=int,
+        default=None,
+        help="Override the config file's num_mini_batches.",
     )
     parser.add_argument(
         "--sweep", action="store_true", help="Enable WandB parameter sweeping."

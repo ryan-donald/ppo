@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import os
 
 import torch
 import torch.optim as optim
@@ -10,6 +9,7 @@ from ryan_ppo.config import TrainConfig
 from ryan_ppo.network import Actor, Critic
 from ryan_ppo.normalization import ObsNormalization
 from ryan_ppo.storage import RolloutBatch
+from ryan_ppo.utils import CapturedStep
 
 KL_LR_DECREASE_FACTOR = 2.0
 KL_LR_INCREASE_FACTOR = 2.0
@@ -18,9 +18,7 @@ LR_ADJUST_RATIO = 1.5
 LOG_SQRT_2PI = 0.5 * math.log(2 * math.pi)
 
 # performance improvements by adjusting compile mode for minibatch loss.
-COMPILE_MODE = os.environ.get("RYAN_PPO_COMPILE_MODE", "max-autotune-no-cudagraphs")
-if COMPILE_MODE == "default":
-    COMPILE_MODE = None
+COMPILE_MODE = "max-autotune-no-cudagraphs"
 
 
 def strip_compile_prefix(state_dict: dict) -> dict:
@@ -74,11 +72,16 @@ class PPOAgent:
         # learning rate stored as tensor for speed.
         self.lr_t = torch.tensor(float(cfg.learning_rate), device=device)
 
+        # on cuda, each minibatch step is replayed as a CUDA graph.
+        self.use_cuda_graph_update = device.type == "cuda"
+        self.graph_key = None
+
         self.optimizer = optim.Adam(
             self.actor_params + self.critic_params,
             lr=self.lr_t,
             fused=(device.type == "cuda"),
             foreach=False if device.type != "cuda" else None,
+            capturable=self.use_cuda_graph_update,
         )
 
         # hyperparameters
@@ -151,6 +154,7 @@ class PPOAgent:
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         for group in self.optimizer.param_groups:
             group["lr"] = self.lr_t
+            group["capturable"] = self.use_cuda_graph_update
         self.current_lr = checkpoint["current_lr"]
         self.update_count = checkpoint.get("update_count", 0)
         return checkpoint["iteration"]
@@ -165,16 +169,20 @@ class PPOAgent:
         else:
             state_obs = state_obs.to(self.device)
 
+        # necessary for new random numbers every replay of the act graph.
+        noise = torch.randn(
+            state_obs.shape[0], self.actor.log_std.shape[0], device=self.device
+        )
         with torch.no_grad():
-            return self.act(state_obs)
+            return self.act(state_obs, noise)
 
     @torch.compile
     def act(
-        self, state_obs: torch.Tensor
+        self, state_obs: torch.Tensor, noise: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # performs forward pass, gaussian sample, and log_prob in one compiled function
         mu, std, log_std = self.actor(state_obs)
-        action = torch.addcmul(mu, std, torch.randn_like(mu))
+        action = torch.addcmul(mu, std, noise)
         log_prob = gaussian_log_prob(action, mu, std, log_std)
         return action, log_prob, mu, std
 
@@ -299,9 +307,23 @@ class PPOAgent:
         dataset_size = len(batch)
         batch_size = dataset_size // num_mini_batches
 
+        data = (
+            batch.states,
+            batch.actions,
+            batch.log_probs_old,
+            batch.returns,
+            advantages,
+            batch.values_old,
+            batch.mus_old,
+            batch.std_old,
+        )
+
         # KL accumulates on device and the adaptive schedule runs on device, so the
         # whole update needs no GPU to CPU sync until the mean is read out below.
-        kl_sum = torch.zeros((), device=self.device)
+        if self.use_cuda_graph_update:
+            kl_sum = self.load_graph_batch(data, batch_size)
+        else:
+            kl_sum = torch.zeros((), device=self.device)
         num_updates = 0
 
         # training loop
@@ -309,44 +331,17 @@ class PPOAgent:
             # randomizes batch data
             indices = torch.randperm(dataset_size, device=self.device)
 
-            # mini-batch updates
-            for start in range(0, dataset_size, batch_size):
+            # mini-batch updates, dropping the remainder rows.
+            for start in range(0, batch_size * num_mini_batches, batch_size):
                 end = start + batch_size
                 batch_indices = indices[start:end]
 
-                loss, kl = self.minibatch_loss(
-                    batch.states,
-                    batch.actions,
-                    batch.log_probs_old,
-                    batch.returns,
-                    advantages,
-                    batch.values_old,
-                    batch.mus_old,
-                    batch.std_old,
-                    batch_indices,
-                )
-
-                # gradient descent step, with a clipped gradient norm. called here
-                # to queue calculation on gpu while the kl accumulation below is
-                # enqueued.
-                self.optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-
-                kl = kl.detach()
-                kl_sum += kl
+                if self.use_cuda_graph_update:
+                    self.graph_indices.copy_(batch_indices)
+                    self.graph_step()
+                else:
+                    self.minibatch_step(data, batch_indices, kl_sum)
                 num_updates += 1
-                if self.schedule_type == "adaptive":
-                    self.adapt_lr_device(kl)
-
-                # clip actor and critic norms seperately, as they can interfere.
-                torch.nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
-                torch.nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
-                self.optimizer.step()
-
-                # clamp log_std post optimizer to keep gradients useful
-                self.actor.log_std.data.clamp_(
-                    min=self.log_std_min, max=self.log_std_max
-                )
 
         # average KL divergence over all minibatch updates.
         mean_kl = (kl_sum / num_updates).item()
@@ -356,3 +351,55 @@ class PPOAgent:
         self.update_count += 1
 
         return mean_kl
+
+    def minibatch_step(
+        self,
+        data: tuple[torch.Tensor, ...],
+        indices: torch.Tensor,
+        kl_sum: torch.Tensor,
+    ) -> None:
+        # one gradient step, with no GPU to CPU sync so it can be captured.
+        loss, kl = self.minibatch_loss(*data, indices)
+
+        # gradient descent step, with a clipped gradient norm. called here
+        # to queue calculation on gpu while the kl accumulation below is
+        # enqueued.
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+
+        kl = kl.detach()
+        kl_sum += kl
+        if self.schedule_type == "adaptive":
+            self.adapt_lr_device(kl)
+
+        # clip actor and critic norms seperately, as they can interfere.
+        torch.nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
+        self.optimizer.step()
+
+        # clamp log_std post optimizer to keep gradients useful
+        self.actor.log_std.data.clamp_(min=self.log_std_min, max=self.log_std_max)
+
+    def load_graph_batch(
+        self, data: tuple[torch.Tensor, ...], batch_size: int
+    ) -> torch.Tensor:
+        # a graph replays on fixed memory, so the batch is copied into it. a new batch
+        # shape captures a new graph.
+        key = (tuple(t.shape for t in data), batch_size)
+        if key != self.graph_key:
+            self.graph_key = key
+            self.graph_data = tuple(torch.empty_like(t) for t in data)
+            self.graph_indices = torch.empty(
+                batch_size, dtype=torch.long, device=self.device
+            )
+            self.graph_kl_sum = torch.zeros((), device=self.device)
+            self.graph_step = CapturedStep(
+                lambda: self.minibatch_step(
+                    self.graph_data, self.graph_indices, self.graph_kl_sum
+                )
+            )
+
+        for buffer, t in zip(self.graph_data, data):
+            buffer.copy_(t)
+        self.graph_kl_sum.zero_()
+        return self.graph_kl_sum

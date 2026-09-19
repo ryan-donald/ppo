@@ -54,25 +54,56 @@ class PhaseTimer:
         if self.cuda:
             self.start_event = torch.cuda.Event(enable_timing=True)
             self.end_event = torch.cuda.Event(enable_timing=True)
-        self._seconds = 0.0
+        self.elapsed = 0.0
 
     def start(self) -> None:
         if self.cuda:
             self.start_event.record(torch.cuda.current_stream(self.device))
         else:
-            self._start = time.perf_counter()
+            self.start_time = time.perf_counter()
 
     def stop(self) -> None:
         if self.cuda:
             self.end_event.record(torch.cuda.current_stream(self.device))
         else:
-            self._seconds = time.perf_counter() - self._start
+            self.elapsed = time.perf_counter() - self.start_time
 
     def seconds(self) -> float:
         if self.cuda:
             self.end_event.synchronize()
             return self.start_event.elapsed_time(self.end_event) / 1000.0
-        return self._seconds
+        return self.elapsed
+
+
+class CapturedStep:
+    """
+    calls fn eagerly for its first calls, then captures it as a CUDA graph and
+    replays it. fn must only use fixed memory and draw no random numbers, as a replay
+    repeats them.
+    """
+
+    def __init__(self, fn, warmup_steps: int = 3) -> None:
+        self.fn = fn
+        self.warmup_left = warmup_steps
+        self.graph = None
+
+    def __call__(self) -> None:
+        if self.graph is not None:
+            self.graph.replay()
+        elif self.warmup_left > 0:
+            stream = torch.cuda.Stream()
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                self.fn()
+            torch.cuda.current_stream().wait_stream(stream)
+            self.warmup_left -= 1
+        else:
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                self.fn()
+            # capture only records the kernels, so replay to actually take this step.
+            graph.replay()
+            self.graph = graph
 
 
 def set_seed(seed: int) -> None:
@@ -103,19 +134,19 @@ class Profiler:
 
     def __init__(self, enabled: bool) -> None:
         self.enabled = enabled
-        self._carb = None
+        self.carb = None
         if enabled:
             import carb.profiler
 
-            self._carb = carb.profiler
+            self.carb = carb.profiler
 
     def begin(self, zone_id: int, name: str) -> None:
-        if self._carb:
-            self._carb.begin(zone_id, name)
+        if self.carb:
+            self.carb.begin(zone_id, name)
 
     def end(self, zone_id: int) -> None:
-        if self._carb:
-            self._carb.end(zone_id)
+        if self.carb:
+            self.carb.end(zone_id)
 
     @contextmanager
     def zone(self, zone_id: int, name: str):

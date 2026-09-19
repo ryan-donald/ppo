@@ -205,11 +205,11 @@ class TrainingLogger:
 
         self.start_time = time.perf_counter()
         self.live = Live(
-            self._table({name: 0.0 for name in self.term_names}),
+            self.table({name: 0.0 for name in self.term_names}),
             refresh_per_second=4,
         )
 
-    def _table(self, reward_rows: dict[str, float]):
+    def table(self, reward_rows: dict[str, float]):
         return generate_table(
             self.perf_stats, self.train_stats, reward_rows, self.task, self.run_url
         )
@@ -279,4 +279,4 @@ class TrainingLogger:
         self.train_stats["entropy"] = stats.avg_entropy
         self.train_stats["Iteration"] = iteration + 1
 
-        self.live.update(self._table(reward_rows))
+        self.live.update(self.table(reward_rows))
