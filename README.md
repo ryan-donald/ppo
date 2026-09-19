@@ -1,5 +1,6 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=fff)](https://docs.python.org/3/whatsnew/3.12.html)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.7-ee4c2c?logo=pytorch&logoColor=white)](https://github.com/pytorch/pytorch/releases/tag/v2.7.0)
+[![Isaac Lab](https://img.shields.io/badge/Isaac_Lab-v3.0.0--EA-76B900?logo=nvidia&logoColor=white)](https://github.com/isaac-sim/IsaacLab/tree/v3.0.0-EA)
 ![Tests](https://github.com/ryan-donald/ppo/actions/workflows/tests.yaml/badge.svg)
 
 # PPO for IsaacLab
@@ -46,42 +47,70 @@ With the help of the python package [rich](https://github.com/textualize/rich), 
 Based on the recommendation in the official Isaac Lab documentation [here](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/utilities/debugging/profiling_performance.html), I added support for code profiling using the Tracy profiler. This allows for live profiling of the performance of the training script. This will provide information for the time spent in each block of execution provide information that can be used to gauge and improve the efficiency of the training script, and various environments. To use this, simply add these flags to the script: "--profile --enable omni.kit.profiler.tracy".
 
 # Benchmarks
-I benchmarked this implementation against the four RL libraries bundled with Isaac Lab — [rsl_rl](https://github.com/leggedrobotics/rsl_rl), [rl_games](https://github.com/Denys88/rl_games), [skrl](https://github.com/Toni-SM/skrl), and [sb3](https://github.com/DLR-RM/stable-baselines3) — across three tasks of increasing difficulty: `Ryan-Cartpole-v0`, `Ryan-Ant-v0`, and `Ryan-Reach-SO-ARM101-Normalized-v0`. Every run used identical settings on the same GPU (RTX 3070) under Isaac Lab 3.0: 12,288 parallel environments, headless, and each library's agent config hyperparameter-matched to `ryan_ppo`. Each framework was run over **three seeds (42, 43, 44)**; the tables report the median across seeds of the final reward (averaged over the last 10% of the run) and of the best mean episode reward reached during training, since the best checkpoint is the one deployed.
+I benchmarked this implementation against the four RL libraries bundled with Isaac Lab — [rsl_rl](https://github.com/leggedrobotics/rsl_rl), [rl_games](https://github.com/Denys88/rl_games), [skrl](https://github.com/Toni-SM/skrl), and [sb3](https://github.com/DLR-RM/stable-baselines3) on three tasks, cartpole, ant, and my SO-ARM101 reach task. Every run used 12,288 parallel environments, headless, and each library's agent config matched. This is a throughput speed measurement, however my library has a slightly longer startup due to pytorch compilation of some functions. In a short run like cartpole, this could effect the total time more significantly than longer runs. I think with the speedup that they provide, especially for more complex tasks that require long runs, the benefits outweigh this penalty.
 
-**Cartpole** — 1,000 iterations, 16 steps/env
+**Cartpole** — 16 steps/env
 
-| Framework | Throughput (steps/s) | Wall-clock (min) | Final reward | Best reward |
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **1,278,739** | **2.9** | 4.897 | 4.947 |
-| skrl | 1,071,080 | 3.3 | 4.733 | 4.956 |
-| rl_games | 1,049,859 | 3.4 | 4.938 | 4.960 |
-| rsl_rl | 1,032,572 | 3.4 | 4.933 | 4.958 |
-| sb3 | 619,827 | 5.5 | 4.886 | 4.911 |
+| **ryan_ppo (this repo)** | **1,364,807** | **144** | **21** | — |
+| skrl | 1,062,592 | 185 | 45 | 1.28× |
+| rl_games | 1,046,086 | 188 | 46 | 1.30× |
+| rsl_rl | 1,013,389 | 194 | 49 | 1.35× |
+| sb3 | 615,140 | 320 | — | 2.22× |
 
-**Ant** — 2,000 iterations, 32 steps/env
+**Ant** — 32 steps/env
 
-| Framework | Throughput (steps/s) | Wall-clock (min) | Final reward | Best reward |
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **634,459** | **21.3** | **139.2** | **140.1** |
-| rsl_rl | 563,325 | 23.8 | 135.5 | 136.1 |
-| skrl | 555,006 | 24.2 | 113.1 | 114.6 |
-| rl_games | 553,812 | 24.2 | 127.3 | 129.2 |
-| sb3 | 385,666 | 34.5 | 132.9 | 134.3 |
+| **ryan_ppo (this repo)** | **632,373** | **622** | **131** | — |
+| rl_games | 574,987 | 684 | 186 | 1.10× |
+| rsl_rl | 571,742 | 688 | 189 | 1.11× |
+| skrl | 570,402 | 689 | 196 | 1.11× |
+| sb3 | 388,650 | 1,012 | — | 1.63× |
 
-**Reach** — 5,000 iterations, 24 steps/env
+**Reach** — 24 steps/env
 
-| Framework | Throughput (steps/s) | Wall-clock (min) | Final reward | Best reward |
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **1,315,430** | **19.4** | 0.920 | 0.926 |
-| skrl | 1,089,609 | 23.2 | 0.948 | 0.959 |
-| rl_games | 1,074,289 | 23.6 | 0.634 | 0.932 |
-| rsl_rl | 848,041 | 29.7 | 0.751 | 0.882 |
-| sb3 | 627,703 | 39.8 | 0.264 | 0.892 |
+| **ryan_ppo (this repo)** | **1,323,175** | **223** | **60** | — |
+| skrl | 961,209 | 307 | 135 | 1.38× |
+| rl_games | 935,929 | 315 | 129 | 1.41× |
+| rsl_rl | 741,893 | 398 | 152 | 1.78× |
+| sb3 | 489,900 | 602 | — | 2.70× |
 
-Across all three tasks, `ryan_ppo` posts the **highest throughput and fastest wall-clock** of any framework tested — 13–21% ahead of the next-quickest library, and roughly 2× faster end-to-end than SB3. On peak reward the result is mixed: it takes the top spot on Ant, while skrl reaches a higher peak on Reach (0.959 vs 0.926) and rl_games edges it on Cartpole (4.960 vs 4.947, a margin small enough that every GPU library has effectively solved the task). Where it separates from the field is in **holding** what it reaches. On Reach it keeps 99.4% of its peak through the end of training (final 0.920 vs best 0.926), where rl_games falls to 68% of its own peak and sb3 to 30%, and its three seeds finish within 0.001 of each other (0.9195–0.9203) against skrl's 0.813–0.969.
+`ryan_ppo` has the highest throughput on every task: 1.10–1.38× the next-fastest library and 1.6–2.7× sb3. For every task, the execution time for the physics is largely unchanged library to library, and the library implementation controls the interface of the agent with the physics, and the update steps of the PPO algorithm. My library has a sigificantly faster update portion, and some of the surrounding framework for the rollouts is also optimized better.
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_cartpole_reward_vs_time.png" width="100%" alt="Cartpole reward vs wall-clock time" />
-  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_ant_reward_vs_time.png" width="100%" alt="Ant reward vs wall-clock time" />
-  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_reach_reward_vs_time.png" width="100%" alt="Reach reward vs wall-clock time" />
-</div>
+### Faster environments
+
+Each of the three tasks also has a direct workflow version running on Newton (MuJoCo Warp) physics with a CUDA-graph-captured physics step, instead of going through Isaac Lab's managers on PhysX. In these tasks, both the usage of a direct workflow instead of a manager based workflow, and the usage of the Newton physics backend instead of the PhysX backend improve the throughput of the task on the environment side. Same benchmark:
+
+**Cartpole (direct, Newton)** — 16 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **2,802,901** | **70** | **21** | — |
+| skrl | 1,886,143 | 104 | 45 | 1.49× |
+| rsl_rl | 1,748,061 | 112 | 51 | 1.60× |
+| rl_games | 1,747,706 | 112 | 49 | 1.60× |
+| sb3 | 815,946 | 241 | — | 3.44× |
+
+**Ant (direct, Newton)** — 32 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **912,864** | **431** | **128** | — |
+| rsl_rl | 767,357 | 512 | 181 | 1.19× |
+| rl_games | 747,892 | 526 | 188 | 1.22× |
+| skrl | 745,901 | 527 | 193 | 1.22× |
+| sb3 | 516,538 | 761 | — | 1.77× |
+
+**Reach (direct, Newton)** — 24 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **1,510,192** | **195** | **59** | — |
+| skrl | 1,118,606 | 264 | 128 | 1.35× |
+| rl_games | 1,066,240 | 277 | 121 | 1.42× |
+| rsl_rl | 695,369 | 424 | 151 | 2.17× |
+| sb3 | 564,519 | 522 | — | 2.68× |
