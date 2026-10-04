@@ -176,7 +176,7 @@ class PPOAgent:
         with torch.no_grad():
             return self.act(state_obs, noise)
 
-    @torch.compile
+    @torch.compile(mode=COMPILE_MODE)
     def act(
         self, state_obs: torch.Tensor, noise: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:

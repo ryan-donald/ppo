@@ -167,3 +167,47 @@ def test_kl_at_small_standard_deviations(sigma, identical):
         .mean()
     )
     assert actual.item() == pytest.approx(expected.item(), rel=1e-5, abs=1e-6)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="TF32 kernels are CUDA-only")
+def test_rollout_matches_update_forward_under_tf32():
+    torch.set_float32_matmul_precision("high")
+    try:
+        torch.manual_seed(9)
+        device = torch.device("cuda")
+        cfg = TrainConfig(
+            learning_rate=1e-3,
+            gamma=0.99,
+            gae_lambda=0.95,
+            value_coef=1.0,
+            clip_epsilon=0.2,
+            max_grad_norm=1.0,
+            desired_kl=0.01,
+            entropy_coef=0.01,
+            schedule_type="adaptive",
+            num_learning_epochs=1,
+            num_steps_per_env=8,
+            num_mini_batches=1,
+            max_iterations=1,
+            use_normalization=True,
+            hidden_dims=[64, 64],
+            std_init=1e-4,
+        )
+        agent = PPOAgent(26, ACTION_DIM, cfg, device=device)
+        envs, steps, minibatch = 1024, 6, 1536
+        states = torch.randn(envs * steps, 26, device=device) * 3 + 1
+        agent.update_normalization(states)
+        rollout = [
+            agent.select_action(states[i : i + envs])
+            for i in range(0, len(states), envs)
+        ]
+        actions, log_probs, mus = (torch.cat([r[k] for r in rollout]) for k in range(3))
+        zeros = torch.zeros(len(states), device=device)
+
+        indices = torch.randperm(len(states), device=device)[:minibatch]
+        _, kl = agent.minibatch_loss(
+            states, actions, log_probs, zeros, zeros, zeros, mus, rollout[0][3], indices
+        )
+        assert kl.item() == 0.0
+    finally:
+        torch.set_float32_matmul_precision("highest")

@@ -5,7 +5,7 @@ import typing_extensions  # noqa: F401 # for profiling so torch doesnt break
 from isaaclab.app import AppLauncher
 
 
-def train(args_cli):
+def train(args_cli, overrides):
     # launch omniverse app
     app_kwargs = {}
     if args_cli.profile:
@@ -52,7 +52,10 @@ def train(args_cli):
     set_seed(args_cli.seed)
 
     env_cfg = parse_env_cfg(
-        args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs
+        args_cli.task,
+        device=args_cli.device,
+        num_envs=args_cli.num_envs,
+        overrides=overrides,
     )
     env_cfg.seed = args_cli.seed
 
@@ -67,6 +70,8 @@ def train(args_cli):
         cfg.max_iterations = args_cli.max_iterations
     if args_cli.num_mini_batches is not None:
         cfg.num_mini_batches = args_cli.num_mini_batches
+    if args_cli.entropy_coef is not None:
+        cfg.entropy_coef = args_cli.entropy_coef
 
     run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run = wandb.init(
@@ -277,6 +282,12 @@ if __name__ == "__main__":
         help="Override the config file's num_mini_batches.",
     )
     parser.add_argument(
+        "--entropy_coef",
+        type=float,
+        default=None,
+        help="Override the config file's entropy_coef.",
+    )
+    parser.add_argument(
         "--sweep", action="store_true", help="Enable WandB parameter sweeping."
     )
     parser.add_argument(
@@ -310,7 +321,7 @@ if __name__ == "__main__":
     AppLauncher.add_app_launcher_args(parser)
 
     # parse the arguments
-    args_cli, _ = parser.parse_known_args()
+    args_cli, overrides = parser.parse_known_args()
 
     if args_cli.profile:
         print("Profiling enabled using carb.profiler with Tracy backend.")
@@ -326,7 +337,7 @@ if __name__ == "__main__":
         )
 
     try:
-        train(args_cli)
+        train(args_cli, overrides)
     except KeyboardInterrupt:
         import wandb
 
