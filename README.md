@@ -48,70 +48,30 @@ With the help of the python package [rich](https://github.com/textualize/rich), 
 Based on the recommendation in the official Isaac Lab documentation [here](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/utilities/debugging/profiling_performance.html), I added support for code profiling using the Tracy profiler. This allows for live profiling of the performance of the training script. This will provide information for the time spent in each block of execution provide information that can be used to gauge and improve the efficiency of the training script, and various environments. To use this, simply add these flags to the script: "--profile --enable omni.kit.profiler.tracy".
 
 # Benchmarks
-I benchmarked this implementation against the four RL libraries bundled with Isaac Lab — [rsl_rl](https://github.com/leggedrobotics/rsl_rl), [rl_games](https://github.com/Denys88/rl_games), [skrl](https://github.com/Toni-SM/skrl), and [sb3](https://github.com/DLR-RM/stable-baselines3) on three tasks, cartpole, ant, and my SO-ARM101 reach task. Every run used 8,192 parallel environments on an RTX 5080, headless, and each library's agent config matched. This is a throughput speed measurement, however my library has a slightly longer startup due to pytorch compilation of some functions. In a short run like cartpole, this could effect the total time more significantly than longer runs. I think with the speedup that they provide, especially for more complex tasks that require long runs, the benefits outweigh this penalty.
+I benchmarked this implementation against the four RL libraries bundled with Isaac Lab: [rsl_rl](https://github.com/leggedrobotics/rsl_rl), [rl_games](https://github.com/Denys88/rl_games), [skrl](https://github.com/Toni-SM/skrl), and [sb3](https://github.com/DLR-RM/stable-baselines3). Every run used 8,192 parallel environments on an RTX 5080. My benchmarks are here: [benchmarks/README.md](benchmarks/README.md).
 
-**Cartpole** — 16 steps/env
+**Throughput.** My library had the highest training throughput on each task that I tested, when compared to the libraries that ship with Isaac Lab.
 
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+| Task | Manager, PhysX | vs next fastest | Direct, Newton | vs next fastest |
 |---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **1,816,704** | **72** | **5** | — |
-| skrl | 1,183,419 | 111 | 34 | 1.54× |
-| rl_games | 1,173,036 | 112 | 31 | 1.55× |
-| rsl_rl | 1,136,048 | 115 | 35 | 1.60× |
-| sb3 | 694,571 | 189 | — | 2.62× |
+| Cartpole | 1,816,704 | 1.54× | 3,508,178 | 2.02× |
+| Ant | 994,079 | 1.11× | 2,097,027 | 1.38× |
+| SO-ARM101 Reach | 1,947,558 | 2.06× | 2,880,358 | 2.60× |
 
-**Ant** — 32 steps/env
+Each library has the same physics latency, so the throughput is driven by how fast the surrounding code in a rollout is, and how fast the update step is. I spent time ensuring that there are minimal GPU to host syncs during this, and that the different functions are compiled into efficient CUDA graphs.
 
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+**Learning.** To benchmark how well the libraries actually learn (the important part), I used the config for each task that is shipped with Isaac Lab, for each library. For this, two things are important to compare: The reward received by the trained policies, and the time it takes to get there. My library typically performs at least as well as the other libraries in reward gained by the agent, and has the highest throughput.
+
+| Task | `ryan_ppo` final reward | Best other library | `ryan_ppo` wall-clock | Fastest other library |
 |---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **994,079** | **264** | **27** | — |
-| skrl | 893,478 | 293 | 54 | 1.11× |
-| rl_games | 885,594 | 296 | 49 | 1.12× |
-| rsl_rl | 832,319 | 315 | 56 | 1.19× |
-| sb3 | 508,995 | 515 | — | 1.95× |
+| Cartpole | **4.954** | 4.953 (rsl_rl, sb3) | **1.5 min** | 2.1 min (rsl_rl) |
+| Ant | **99.0** | 87.6 (rsl_rl) | **9.3 min** | 10.4 min (skrl) |
+| Franka Reach | 0.240 | **0.243** (rl_games) | **7.2 min** | 7.9 min (rl_games, skrl) |
 
-**Reach** — 24 steps/env
+<div align="center">
+  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_cartpole_learning.png" width="32%" alt="Cartpole reward vs env steps">
+  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_ant_learning.png" width="32%" alt="Ant reward vs env steps">
+  <img src="https://raw.githubusercontent.com/ryan-donald/ppo/main/images/benchmark_reach_learning.png" width="32%" alt="Franka Reach reward vs env steps">
+</div>
 
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
-|---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **1,947,558** | **101** | **16** | — |
-| skrl | 946,503 | 208 | 119 | 2.06× |
-| rl_games | 880,621 | 223 | 127 | 2.21× |
-| rsl_rl | 657,378 | 299 | 139 | 2.96× |
-| sb3 | 546,775 | 360 | — | 3.56× |
-
-`ryan_ppo` has the highest throughput on every task: 1.11–2.06× the next-fastest library and 2.0–3.6× sb3. For every task, the execution time for the physics is largely unchanged library to library, and the library implementation controls the interface of the agent with the physics, and the update steps of the PPO algorithm. My library has a sigificantly faster update portion, and some of the surrounding framework for the rollouts is also optimized better.
-
-### Faster environments
-
-Each of the three tasks also has a direct workflow version running on Newton (MuJoCo Warp) physics with a CUDA-graph-captured physics step, instead of going through Isaac Lab's managers on PhysX. In these tasks, both the usage of a direct workflow instead of a manager based workflow, and the usage of the Newton physics backend instead of the PhysX backend improve the throughput of the task on the environment side. Same benchmark:
-
-**Cartpole (direct, Newton)** — 16 steps/env
-
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
-|---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **3,508,178** | **37** | **4** | — |
-| skrl | 1,739,236 | 75 | 34 | 2.02× |
-| rl_games | 1,654,663 | 79 | 34 | 2.12× |
-| rsl_rl | 1,636,259 | 80 | 36 | 2.14× |
-| sb3 | 845,351 | 155 | — | 4.15× |
-
-**Ant (direct, Newton)** — 32 steps/env
-
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
-|---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,097,027** | **125** | **27** | — |
-| skrl | 1,522,399 | 172 | 54 | 1.38× |
-| rl_games | 1,494,115 | 175 | 50 | 1.40× |
-| rsl_rl | 1,325,754 | 198 | 57 | 1.58× |
-| sb3 | 648,647 | 404 | — | 3.23× |
-
-**Reach (direct, Newton)** — 24 steps/env
-
-| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
-|---|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,880,358** | **68** | **16** | — |
-| skrl | 1,106,186 | 178 | 118 | 2.60× |
-| rl_games | 1,062,657 | 185 | 126 | 2.71× |
-| sb3 | 620,027 | 317 | — | 4.65× |
-| rsl_rl | 503,670 | 390 | 145 | 5.72× |
+In the Ant task, my library learns the best policy of all of them, and has the highest throughput. For some of the other tasks, my library learns a policy atleast as good as the other libraries, with a higher throughput, but for some tasks my library seems to not be as sample efficient early on, so it can occasionally have a slightly shallower curve at the start of training.
