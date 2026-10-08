@@ -164,6 +164,16 @@ def policy_obs(state):
     return state
 
 
+def warmup_normalization(env, agent, state, num_steps: int):
+    # warm-up the observation normalizer with a full rollout of observations.
+    obs = []
+    for _ in range(num_steps):
+        obs.append(policy_obs(state).clone())
+        state, *_ = env.step(agent.select_action(policy_obs(state))[0])
+    agent.update_normalization(torch.cat(obs))
+    return state
+
+
 def get_cfg_path(task):
     current_file_path = Path(__file__).resolve()
     project_root = current_file_path.parents[2]

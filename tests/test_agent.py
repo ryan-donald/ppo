@@ -7,6 +7,7 @@ import torch
 from ryan_ppo.config import TrainConfig
 from ryan_ppo.ppo import PPOAgent
 from ryan_ppo.storage import RolloutBatch
+from ryan_ppo.utils import warmup_normalization
 
 
 def make_agent(state_dim, action_dim, hidden_dims, **overrides):
@@ -328,4 +329,30 @@ def test_initial_std_uses_config_value(std_init, std_min, std_max):
     )
     torch.testing.assert_close(
         agent.actor.log_std, torch.full((2,), math.log(std_init))
+    )
+
+
+def test_warmup_normalization_seeds_statistics_from_stepped_obs():
+    # statistics come from the observations seen while stepping the initial policy,
+    # not from the (constant) reset observation alone.
+    agent = make_agent(4, 2, [8, 8])
+
+    class Env:
+        calls = 0
+
+        def step(self, action):
+            self.calls += 1
+            return torch.full((16, 4), float(self.calls)), None, None, None, None
+
+    env = Env()
+    state = warmup_normalization(env, agent, torch.zeros(16, 4), num_steps=3)
+
+    assert env.calls == 3
+    torch.testing.assert_close(state, torch.full((16, 4), 3.0))
+    # observations 0, 1, 2 are recorded; the returned state is not.
+    torch.testing.assert_close(
+        agent.obs_normalizer.mean, torch.full((4,), 1.0), rtol=0, atol=1e-3
+    )
+    torch.testing.assert_close(
+        agent.obs_normalizer.var, torch.full((4,), 2 / 3), rtol=0, atol=1e-3
     )

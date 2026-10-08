@@ -39,6 +39,7 @@ def train(args_cli, overrides):
         install_rich_traceback,
         policy_obs,
         set_seed,
+        warmup_normalization,
     )
 
     profiler = Profiler(args_cli.profile)
@@ -132,8 +133,8 @@ def train(args_cli, overrides):
         env.unwrapped.common_step_counter = start_iter * cfg.num_steps_per_env
         print(f"Resumed from {args_cli.resume} at iteration {start_iter}.")
     elif cfg.use_normalization:
-        # ensure that statistics are valid for first rollout on resume.
-        agent.update_normalization(policy_obs(state))
+        # warm-up the observation normalizer. prevents large KL on first rollout.
+        state = warmup_normalization(env, agent, state, cfg.num_steps_per_env)
 
     # per-term reward logging
     reward_manager = env.unwrapped.reward_manager
