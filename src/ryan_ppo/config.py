@@ -33,7 +33,7 @@ class TrainConfig:
     hidden_dims: list[int]
     max_lr: float = 1e-3
     min_lr: float = 1e-5
-    std_min: float = math.exp(-20.0)
+    std_min: float = 0.005
     std_max: float = math.exp(2.0)
     std_init: float = 0.5
     stagger_initial_episodes: bool = True

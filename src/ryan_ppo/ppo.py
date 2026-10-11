@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 
 import torch
@@ -164,12 +165,9 @@ class PPOAgent:
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # selects action based upon an observation and the current policy,
         # returns action, log_prob, mu, std.
-        if not torch.is_tensor(state_obs):
-            state_obs = torch.tensor(state_obs, dtype=torch.float, device=self.device)
-        else:
-            state_obs = state_obs.to(self.device)
+        state_obs = state_obs.to(self.device)
 
-        # necessary for new random numbers every replay of the act graph.
+        # act takes noise as an input, so the rollout can pass a fixed buffer.
         noise = torch.randn(
             state_obs.shape[0], self.actor.log_std.shape[0], device=self.device
         )
@@ -207,9 +205,13 @@ class PPOAgent:
         rewards: torch.Tensor,
         values: torch.Tensor,
         dones: torch.Tensor,
+        truncs: torch.Tensor,
         next_value: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # computes generalized advantage estimates (GAE)
+
+        # bootstrap the reward for steps where the env truncated.
+        rewards = rewards + self.gamma * values * truncs
 
         values_extended = torch.cat([values, next_value.unsqueeze(0)], dim=0)
 
@@ -234,25 +236,19 @@ class PPOAgent:
     @torch.compile(mode=COMPILE_MODE)
     def minibatch_loss(
         self,
-        batch_states: torch.Tensor,
-        batch_actions: torch.Tensor,
-        batch_log_probs_old: torch.Tensor,
-        batch_returns: torch.Tensor,
-        batch_advantages: torch.Tensor,
-        batch_values_old: torch.Tensor,
-        batch_mus_old: torch.Tensor,
-        std_old: torch.Tensor,
+        batch: RolloutBatch,
         indices: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # single minibatch loss and kl in a single compiled function.
 
-        batch_states = batch_states[indices]
-        batch_actions = batch_actions[indices]
-        batch_log_probs_old = batch_log_probs_old[indices]
-        batch_returns = batch_returns[indices]
-        batch_advantages = batch_advantages[indices]
-        batch_values_old = batch_values_old[indices]
-        batch_mus_old = batch_mus_old[indices]
+        batch_states = batch.states[indices]
+        batch_actions = batch.actions[indices]
+        batch_log_probs_old = batch.log_probs_old[indices]
+        batch_returns = batch.returns[indices]
+        batch_advantages = batch.advantages[indices]
+        batch_values_old = batch.values_old[indices]
+        batch_mus_old = batch.mus_old[indices]
+        std_old = batch.std_old
 
         # calculate log_probs for current policy.
         mu, std, log_std = self.actor(batch_states)
@@ -294,8 +290,8 @@ class PPOAgent:
     def update(
         self,
         batch: RolloutBatch,
-        epochs: int = 4,
-        num_mini_batches: int = 4,
+        epochs: int,
+        num_mini_batches: int,
     ) -> float:
         # updates Actor and Critic networks using the PPO algorithm.
 
@@ -303,25 +299,15 @@ class PPOAgent:
         advantages = (batch.advantages - batch.advantages.mean()) / (
             batch.advantages.std() + 1e-8
         )
+        batch = dataclasses.replace(batch, advantages=advantages)
 
         dataset_size = len(batch)
         batch_size = dataset_size // num_mini_batches
 
-        data = (
-            batch.states,
-            batch.actions,
-            batch.log_probs_old,
-            batch.returns,
-            advantages,
-            batch.values_old,
-            batch.mus_old,
-            batch.std_old,
-        )
-
         # KL accumulates on device and the adaptive schedule runs on device, so the
         # whole update needs no GPU to CPU sync until the mean is read out below.
         if self.use_cuda_graph_update:
-            kl_sum = self.load_graph_batch(data, batch_size)
+            kl_sum = self.load_graph_batch(batch, batch_size)
         else:
             kl_sum = torch.zeros((), device=self.device)
         num_updates = 0
@@ -340,7 +326,7 @@ class PPOAgent:
                     self.graph_indices.copy_(batch_indices)
                     self.graph_step()
                 else:
-                    self.minibatch_step(data, batch_indices, kl_sum)
+                    self.minibatch_step(batch, batch_indices, kl_sum)
                 num_updates += 1
 
         # average KL divergence over all minibatch updates.
@@ -354,16 +340,14 @@ class PPOAgent:
 
     def minibatch_step(
         self,
-        data: tuple[torch.Tensor, ...],
+        batch: RolloutBatch,
         indices: torch.Tensor,
         kl_sum: torch.Tensor,
     ) -> None:
         # one gradient step, with no GPU to CPU sync so it can be captured.
-        loss, kl = self.minibatch_loss(*data, indices)
+        loss, kl = self.minibatch_loss(batch, indices)
 
-        # gradient descent step, with a clipped gradient norm. called here
-        # to queue calculation on gpu while the kl accumulation below is
-        # enqueued.
+        # backward is queued first, so the GPU runs it while the KL step is enqueued.
         self.optimizer.zero_grad(set_to_none=True)
         loss.backward()
 
@@ -380,26 +364,27 @@ class PPOAgent:
         # clamp log_std post optimizer to keep gradients useful
         self.actor.log_std.data.clamp_(min=self.log_std_min, max=self.log_std_max)
 
-    def load_graph_batch(
-        self, data: tuple[torch.Tensor, ...], batch_size: int
-    ) -> torch.Tensor:
+    def load_graph_batch(self, batch: RolloutBatch, batch_size: int) -> torch.Tensor:
         # a graph replays on fixed memory, so the batch is copied into it. a new batch
         # shape captures a new graph.
-        key = (tuple(t.shape for t in data), batch_size)
+        tensors = vars(batch)
+        key = (tuple((name, t.shape) for name, t in tensors.items()), batch_size)
         if key != self.graph_key:
             self.graph_key = key
-            self.graph_data = tuple(torch.empty_like(t) for t in data)
+            self.graph_batch = dataclasses.replace(
+                batch, **{name: torch.empty_like(t) for name, t in tensors.items()}
+            )
             self.graph_indices = torch.empty(
                 batch_size, dtype=torch.long, device=self.device
             )
             self.graph_kl_sum = torch.zeros((), device=self.device)
             self.graph_step = CapturedStep(
                 lambda: self.minibatch_step(
-                    self.graph_data, self.graph_indices, self.graph_kl_sum
+                    self.graph_batch, self.graph_indices, self.graph_kl_sum
                 )
             )
 
-        for buffer, t in zip(self.graph_data, data):
-            buffer.copy_(t)
+        for name, t in tensors.items():
+            getattr(self.graph_batch, name).copy_(t)
         self.graph_kl_sum.zero_()
         return self.graph_kl_sum

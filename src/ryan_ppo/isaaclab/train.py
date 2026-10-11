@@ -116,9 +116,9 @@ def train(args_cli, overrides):
             int(env.unwrapped.max_episode_length) // cfg.num_steps_per_env, 1
         )
         offsets = torch.randint_like(ep_len_buf, high=rollouts_per_episode)
-        env.unwrapped.episode_length_buf = offsets * cfg.num_steps_per_env
+        ep_len_buf.copy_(offsets * cfg.num_steps_per_env)
 
-    steps_per_rollout = cfg.num_steps_per_env * num_envs  # 24 * num_envs
+    steps_per_rollout = cfg.num_steps_per_env * num_envs
     num_steps = cfg.num_steps_per_env
 
     saver = CheckpointSaver(
@@ -196,13 +196,10 @@ def train(args_cli, overrides):
         # accumulate episode/term rewards
         tracker.record_rollout(storage.rewards, storage.dones, storage.term_rewards)
 
-        # bootstrap the reward for steps where env truncated
-        storage.rewards += agent.gamma * values * storage.truncs
-
         # compute GAE advantages and returns
         with profiler.zone(4, "compute_gae"):
             advantages, returns = agent.compute_gae(
-                storage.rewards, values, storage.dones, next_value
+                storage.rewards, values, storage.dones, storage.truncs, next_value
             )
 
         # update actor and critic networks
@@ -261,7 +258,7 @@ def train(args_cli, overrides):
 if __name__ == "__main__":
     # add argparse arguments
     parser = argparse.ArgumentParser(
-        description="Random agent for Isaac Lab environments."
+        description="PPO training for Isaac Lab environments."
     )
     parser.add_argument(
         "--num_envs", type=int, default=None, help="Number of environments to simulate."
@@ -315,7 +312,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--profile",
         action="store_true",
-        help="Profile the training loop using cProfile.",
+        help="Profile the training loop with carb.profiler zones (Tracy backend).",
     )
 
     # append AppLauncher cli args

@@ -27,9 +27,7 @@ class RolloutBatch:
 class RolloutStorage:
     """
     fixed-size buffers for one PPO rollout, shaped (num_steps, num_envs, ...).
-
-    this class owns the rollout buffers. moves this code out of train.py,
-    improving readability
+    the buffers are allocated once, so captured graphs can write into them.
     """
 
     def __init__(
@@ -85,8 +83,7 @@ class RolloutStorage:
         std_old: torch.Tensor,
     ) -> RolloutBatch:
         """
-        helper function to flatten the entire batch together, reducing repetition
-        in the train.py file.
+        flatten (num_steps, num_envs) into one batch dim for the update, as views.
         """
         return RolloutBatch(
             states=self.states.reshape(-1, self.states.shape[-1]),

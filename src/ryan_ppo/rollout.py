@@ -43,8 +43,10 @@ class RolloutStepper:
             lambda step=step: self.store_step(step) for step in range(storage.num_steps)
         ]
         if torch.device(device).type == "cuda":
-            self.act_step = CapturedStep(self.act_step)
-            self.store_steps = [CapturedStep(fn) for fn in self.store_steps]
+            # one memory pool shared by the rollout graphs.
+            pool = torch.cuda.graph_pool_handle()
+            self.act_step = CapturedStep(self.act_step, pool=pool)
+            self.store_steps = [CapturedStep(fn, pool=pool) for fn in self.store_steps]
 
     def act(self, state_obs: torch.Tensor) -> torch.Tensor:
         # the returned action is overwritten by the next call.
