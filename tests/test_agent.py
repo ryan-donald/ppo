@@ -10,7 +10,7 @@ from ryan_ppo.storage import RolloutBatch
 from ryan_ppo.utils import warmup_normalization
 
 
-def make_agent(state_dim, action_dim, hidden_dims, **overrides):
+def make_agent(state_dim, action_dim, hidden_dims, device="cpu", **overrides):
     # builds an agent with the defaults the constructor used before TrainConfig
     # was folded in, so test behavior is unchanged.
     cfg = TrainConfig(
@@ -30,7 +30,12 @@ def make_agent(state_dim, action_dim, hidden_dims, **overrides):
         use_normalization=True,
         hidden_dims=hidden_dims,
     )
-    return PPOAgent(state_dim, action_dim, replace(cfg, **overrides))
+    return PPOAgent(
+        state_dim,
+        action_dim,
+        replace(cfg, **overrides),
+        device=device,
+    )
 
 
 def test_agent_init():
@@ -107,7 +112,11 @@ def test_compute_gae():
     random_next_value = torch.tensor([-0.4000, 1.4000])
 
     advantages, returns = agent.compute_gae(
-        random_rewards, random_values, random_dones, random_next_value
+        random_rewards,
+        random_values,
+        random_dones,
+        torch.zeros_like(random_dones),
+        random_next_value,
     )
 
     assert advantages.shape == (num_steps, num_envs), (
@@ -240,7 +249,7 @@ def make_rollout(agent, states):
         actions=actions,
         log_probs_old=log_probs,
         returns=values + 1,
-        advantages=torch.arange(len(states)).float(),
+        advantages=torch.arange(len(states), device=states.device).float(),
         values_old=values,
         mus_old=mus,
         std_old=std,
@@ -283,26 +292,18 @@ def test_minibatch_indexing_matches_preselected_loss_and_gradients(normalize):
     agent.update_normalization(torch.randn(8, 4) * 3 + 10)
     batch = make_rollout(agent, torch.randn(8, 4) * 2 + 8)
     indices = torch.tensor([5, 1, 7, 0])
-    indexed_loss, indexed_kl = agent.minibatch_loss(
-        batch.states,
-        batch.actions,
-        batch.log_probs_old,
-        batch.returns,
-        batch.advantages,
-        batch.values_old,
-        batch.mus_old,
-        batch.std_old,
-        indices,
-    )
+    indexed_loss, indexed_kl = agent.minibatch_loss(batch, indices)
     raw_loss, raw_kl = agent.minibatch_loss(
-        batch.states[indices],
-        batch.actions[indices],
-        batch.log_probs_old[indices],
-        batch.returns[indices],
-        batch.advantages[indices],
-        batch.values_old[indices],
-        batch.mus_old[indices],
-        batch.std_old,
+        RolloutBatch(
+            states=batch.states[indices],
+            actions=batch.actions[indices],
+            log_probs_old=batch.log_probs_old[indices],
+            returns=batch.returns[indices],
+            advantages=batch.advantages[indices],
+            values_old=batch.values_old[indices],
+            mus_old=batch.mus_old[indices],
+            std_old=batch.std_old,
+        ),
         torch.arange(len(indices)),
     )
     torch.testing.assert_close(indexed_loss, raw_loss)
@@ -356,3 +357,24 @@ def test_warmup_normalization_seeds_statistics_from_stepped_obs():
     torch.testing.assert_close(
         agent.obs_normalizer.var, torch.full((4,), 2 / 3), rtol=0, atol=1e-3
     )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="graph update is CUDA-only")
+def test_graph_update_does_not_write_into_callers_batch():
+    # a later update must not write into an earlier caller's batch tensors.
+    torch.manual_seed(10)
+    agent = make_agent(4, 2, [8, 8], device=torch.device("cuda"))
+    first = make_rollout(agent, torch.randn(64, 4, device="cuda"))
+    saved = {name: t.clone() for name, t in vars(first).items() if t is not None}
+    # 4 minibatch steps per update: the graph is captured during the first one.
+    agent.update(first, epochs=2, num_mini_batches=2)
+    for name, t in saved.items():
+        assert torch.equal(getattr(first, name), t), name
+    for _ in range(2):
+        agent.update(
+            make_rollout(agent, torch.randn(64, 4, device="cuda")),
+            epochs=2,
+            num_mini_batches=2,
+        )
+    for name, t in saved.items():
+        assert torch.equal(getattr(first, name), t), name

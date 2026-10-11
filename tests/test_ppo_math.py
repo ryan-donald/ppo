@@ -12,6 +12,7 @@ from torch.distributions import Normal, kl_divergence
 
 from ryan_ppo.config import TrainConfig
 from ryan_ppo.ppo import PPOAgent, gaussian_entropy, gaussian_log_prob
+from ryan_ppo.storage import RolloutBatch
 
 BATCH, ACTION_DIM = 64, 6
 
@@ -92,14 +93,16 @@ def test_minibatch_kl_matches_torch():
     actions = torch.randn(BATCH, ACTION_DIM)
 
     _, kl = agent.minibatch_loss(
-        states,
-        actions,
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        mu_old,
-        std_old,
+        RolloutBatch(
+            states=states,
+            actions=actions,
+            log_probs_old=torch.randn(BATCH),
+            returns=torch.randn(BATCH),
+            advantages=torch.randn(BATCH),
+            values_old=torch.randn(BATCH),
+            mus_old=mu_old,
+            std_old=std_old,
+        ),
         torch.arange(BATCH),
     )
 
@@ -125,14 +128,16 @@ def test_minibatch_kl_is_zero_for_identical_policies():
         mu, std, _ = agent.actor(states)
 
     _, kl = agent.minibatch_loss(
-        states,
-        torch.randn(BATCH, ACTION_DIM),
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        torch.randn(BATCH),
-        mu,
-        std,
+        RolloutBatch(
+            states=states,
+            actions=torch.randn(BATCH, ACTION_DIM),
+            log_probs_old=torch.randn(BATCH),
+            returns=torch.randn(BATCH),
+            advantages=torch.randn(BATCH),
+            values_old=torch.randn(BATCH),
+            mus_old=mu,
+            std_old=std,
+        ),
         torch.arange(BATCH),
     )
     assert abs(kl.item()) < 1e-6, kl.item()
@@ -149,14 +154,16 @@ def test_kl_at_small_standard_deviations(sigma, identical):
     old_mu = mu if identical else mu + sigma * 0.25
     old_std = std if identical else std * 1.3
     _, actual = agent.minibatch_loss(
-        states,
-        mu,
-        torch.zeros(BATCH),
-        torch.zeros(BATCH),
-        torch.ones(BATCH),
-        torch.zeros(BATCH),
-        old_mu,
-        old_std,
+        RolloutBatch(
+            states=states,
+            actions=mu,
+            log_probs_old=torch.zeros(BATCH),
+            returns=torch.zeros(BATCH),
+            advantages=torch.ones(BATCH),
+            values_old=torch.zeros(BATCH),
+            mus_old=old_mu,
+            std_old=old_std,
+        ),
         torch.arange(BATCH),
     )
     expected = (
@@ -171,6 +178,8 @@ def test_kl_at_small_standard_deviations(sigma, identical):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="TF32 kernels are CUDA-only")
 def test_rollout_matches_update_forward_under_tf32():
+    # fresh compile cache, so act and minibatch_loss both run compiled.
+    torch._dynamo.reset()
     torch.set_float32_matmul_precision("high")
     try:
         torch.manual_seed(9)
@@ -206,7 +215,17 @@ def test_rollout_matches_update_forward_under_tf32():
 
         indices = torch.randperm(len(states), device=device)[:minibatch]
         _, kl = agent.minibatch_loss(
-            states, actions, log_probs, zeros, zeros, zeros, mus, rollout[0][3], indices
+            RolloutBatch(
+                states=states,
+                actions=actions,
+                log_probs_old=log_probs,
+                returns=zeros,
+                advantages=zeros,
+                values_old=zeros,
+                mus_old=mus,
+                std_old=rollout[0][3],
+            ),
+            indices,
         )
         assert kl.item() == 0.0
     finally:
