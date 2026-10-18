@@ -13,7 +13,7 @@ This is a repository containing my implementation of the Proximal Policy Optimiz
 To use this package, follow the steps below:
 
 * Install and setup Nvidia's IsaacLab, found [here](https://github.com/isaac-sim/IsaacLab).
-* Install my custom IsaacLab tasks from [tasks-isaaclab](https://github.com/ryan-donald/tasks-isaaclab), which provides the `ryan_tasks` package the training scripts import: clone it and run "pip install -e source/ryan_tasks" in its base directory.
+* Install my custom IsaacLab tasks from [tasks-isaaclab](https://github.com/ryan-donald/tasks-isaaclab), which provides the `ryan_tasks` package the training scripts import: clone it and run "pip install -e ." in its base directory.
 * Clone this repository.
 * Run the command "pip install -e ." within this repository.
 * You are all set and can now train agents within IsaacLab using this package. An example training run command is below:

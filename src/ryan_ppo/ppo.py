@@ -22,11 +22,6 @@ LOG_SQRT_2PI = 0.5 * math.log(2 * math.pi)
 COMPILE_MODE = "max-autotune-no-cudagraphs"
 
 
-def strip_compile_prefix(state_dict: dict) -> dict:
-    # allows loading of checkpoints saved from a compiled module.
-    return {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
-
-
 def gaussian_log_prob(
     x: torch.Tensor, mu: torch.Tensor, std: torch.Tensor, log_std: torch.Tensor
 ) -> torch.Tensor:
@@ -81,7 +76,6 @@ class PPOAgent:
             self.actor_params + self.critic_params,
             lr=self.lr_t,
             fused=(device.type == "cuda"),
-            foreach=False if device.type != "cuda" else None,
             capturable=self.use_cuda_graph_update,
         )
 
@@ -89,6 +83,7 @@ class PPOAgent:
         self.gamma = cfg.gamma
         self.gae_lambda = cfg.gae_lambda
         self.clip_epsilon = cfg.clip_epsilon
+        self.value_clip = cfg.value_clip
         self.max_grad_norm = cfg.max_grad_norm
         self.entropy_coef = cfg.entropy_coef
         self.value_coef = cfg.value_coef
@@ -125,7 +120,8 @@ class PPOAgent:
 
     @torch.compile
     def update_normalization(self, obs: torch.Tensor) -> None:
-        self.actor.update_normalization(obs)
+        if self.obs_normalizer is not None:
+            self.obs_normalizer.update(obs)
 
     def save_checkpoint(self, path: str, iteration: int) -> None:
         # save a complete checkpoint for resuming training. includes weights,
@@ -149,9 +145,9 @@ class PPOAgent:
         # fully loads the checkpoint saved by the save_checkpoint() function.
 
         checkpoint = torch.load(path, map_location=self.device)
-        self.actor.load_state_dict(strip_compile_prefix(checkpoint["actor"]))
+        self.actor.load_state_dict(checkpoint["actor"])
         self.actor.log_std.data.clamp_(min=self.log_std_min, max=self.log_std_max)
-        self.critic.load_state_dict(strip_compile_prefix(checkpoint["critic"]))
+        self.critic.load_state_dict(checkpoint["critic"])
         self.optimizer.load_state_dict(checkpoint["optimizer"])
         for group in self.optimizer.param_groups:
             group["lr"] = self.lr_t
@@ -190,7 +186,7 @@ class PPOAgent:
         mu, _, _ = self.actor(state_obs)
         return mu
 
-    @torch.compile
+    @torch.compile(mode=COMPILE_MODE)
     def evaluate_values(self, states: torch.Tensor) -> torch.Tensor:
         # critic values with the trailing singleton dim dropped.
         return self.critic(states).squeeze(-1)
@@ -276,7 +272,7 @@ class PPOAgent:
         # compute clipped value loss
         values = self.critic(batch_states).view(-1)
         value_pred_clipped = batch_values_old + torch.clamp(
-            values - batch_values_old, -self.clip_epsilon, self.clip_epsilon
+            values - batch_values_old, -self.value_clip, self.value_clip
         )
         value_losses = (values - batch_returns).pow(2)
         value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)

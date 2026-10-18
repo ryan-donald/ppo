@@ -50,7 +50,6 @@ class EpisodeTracker:
 
         # totals since the last summarize(). float64 so the sum-of-squares variance
         # stays accurate; they are scalars, so the precision is free.
-        self.device = device
         self.count = torch.zeros((), dtype=torch.float64, device=device)
         self.ret_sum = torch.zeros((), dtype=torch.float64, device=device)
         self.ret_sq_sum = torch.zeros((), dtype=torch.float64, device=device)

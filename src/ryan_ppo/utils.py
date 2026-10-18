@@ -176,6 +176,8 @@ def get_cfg_path(task):
     current_file_path = Path(__file__).resolve()
     project_root = current_file_path.parents[2]
     ini_file_path = project_root / "cfg" / f"{task}.ini"
+    if not ini_file_path.exists() and "-Play-" in task:
+        ini_file_path = project_root / "cfg" / f"{task.replace('-Play-', '-')}.ini"
     if not ini_file_path.exists():
         raise FileNotFoundError(f"Configuration file not found at: {ini_file_path}")
 

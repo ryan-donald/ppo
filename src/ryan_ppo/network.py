@@ -51,11 +51,6 @@ class MLP(nn.Module):
             x = F.elu(layer(x))
         return self.output_layer(x)
 
-    def update_normalization(self, obs: torch.Tensor) -> None:
-        # update observation normalization statistics
-        if self.obs_normalizer:
-            self.obs_normalizer.update(obs)
-
 
 class Actor(MLP):
     def __init__(

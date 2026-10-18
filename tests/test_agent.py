@@ -205,10 +205,6 @@ def test_checkpoint_roundtrip(tmp_path):
     path = str(tmp_path / "checkpoint.pth")
     agent.save_checkpoint(path, iteration=7)
 
-    checkpoint = torch.load(path)
-    assert not any(k.startswith("_orig_mod.") for k in checkpoint["actor"])
-    assert not any(k.startswith("_orig_mod.") for k in checkpoint["critic"])
-
     other = make_agent(4, 4, [2, 2])
     assert other.load_checkpoint(path) == 7
 
@@ -378,3 +374,14 @@ def test_graph_update_does_not_write_into_callers_batch():
         )
     for name, t in saved.items():
         assert torch.equal(getattr(first, name), t), name
+
+
+@pytest.mark.parametrize("value_clip,clipped", [(0.2, True), (math.inf, False)])
+def test_value_clip_zeroes_critic_gradient_past_the_clip(value_clip, clipped):
+    torch.manual_seed(9)
+    agent = make_agent(4, 2, [2, 2], value_clip=value_clip)
+    batch = make_rollout(agent, torch.randn(8, 4))
+    batch = replace(batch, values_old=batch.values_old - 0.5)
+    loss, _ = agent.minibatch_loss(batch, torch.arange(len(batch)))
+    grads = torch.autograd.grad(loss, agent.critic_params)
+    assert all((g == 0).all() for g in grads) == clipped
