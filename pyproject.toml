@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ryan-ppo"
 version = "1.0.0"
-description = "PPO implementation for NVIDIA Isaac Lab, with sim2real transfer to the SO-ARM101 robot"
+description = "Proximal Policy Optimization (PPO) implementation in PyTorch"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -30,6 +30,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["ryan_ppo*"]
 
 [tool.ruff]
 line-length = 88
@@ -44,5 +45,5 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint.isort]
-known-first-party = ["ryan_ppo", "ryan_tasks"]
+known-first-party = ["ryan_ppo", "ryan_tasks", "ryan_mjwarp_tasks"]
 known-third-party = ["wandb", "gymnasium", "isaaclab_tasks", "torch", "numpy"]

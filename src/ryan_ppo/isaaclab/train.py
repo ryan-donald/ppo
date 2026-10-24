@@ -2,18 +2,16 @@ import argparse
 import sys
 
 import typing_extensions  # noqa: F401 # for profiling so torch doesnt break
-from isaaclab.app import AppLauncher
+from isaaclab.app import add_launcher_args, launch_simulation
 
 
 def train(args_cli, overrides):
-    # launch omniverse app
-    app_kwargs = {}
-    if args_cli.profile:
-        app_kwargs["profiler_backend"] = ["tracy"]
+    args_cli.require_kit = True
+    with launch_simulation(None, args_cli):
+        _train(args_cli, overrides)
 
-    app_launcher = AppLauncher(args_cli, **app_kwargs)
-    simulation_app = app_launcher.app
 
+def _train(args_cli, overrides):
     import signal
     from datetime import datetime
 
@@ -21,9 +19,9 @@ def train(args_cli, overrides):
     import isaaclab_tasks  # noqa: F401
     import torch
     import wandb
+    from isaaclab.cli import load_external_tasks
     from isaaclab_tasks.utils import parse_env_cfg
 
-    import ryan_tasks.tasks  # noqa: F401
     from ryan_ppo.checkpointing import CheckpointSaver
     from ryan_ppo.config import TrainConfig
     from ryan_ppo.ppo import PPOAgent
@@ -41,6 +39,9 @@ def train(args_cli, overrides):
         set_seed,
         warmup_normalization,
     )
+
+    # registers external tasks for isaaclab.
+    load_external_tasks()
 
     profiler = Profiler(args_cli.profile)
     profiler.begin(1, "train_loop")
@@ -69,10 +70,6 @@ def train(args_cli, overrides):
 
     if args_cli.max_iterations is not None:
         cfg.max_iterations = args_cli.max_iterations
-    if args_cli.num_mini_batches is not None:
-        cfg.num_mini_batches = args_cli.num_mini_batches
-    if args_cli.entropy_coef is not None:
-        cfg.entropy_coef = args_cli.entropy_coef
 
     run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run = wandb.init(
@@ -252,8 +249,6 @@ def train(args_cli, overrides):
 
     profiler.end(1)
 
-    simulation_app.close()
-
 
 if __name__ == "__main__":
     # add argparse arguments
@@ -272,18 +267,6 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Override the config file's max_iterations.",
-    )
-    parser.add_argument(
-        "--num_mini_batches",
-        type=int,
-        default=None,
-        help="Override the config file's num_mini_batches.",
-    )
-    parser.add_argument(
-        "--entropy_coef",
-        type=float,
-        default=None,
-        help="Override the config file's entropy_coef.",
     )
     parser.add_argument(
         "--sweep", action="store_true", help="Enable WandB parameter sweeping."
@@ -315,8 +298,8 @@ if __name__ == "__main__":
         help="Profile the training loop with carb.profiler zones (Tracy backend).",
     )
 
-    # append AppLauncher cli args
-    AppLauncher.add_app_launcher_args(parser)
+    # append the simulation launcher's cli args
+    add_launcher_args(parser)
 
     # parse the arguments
     args_cli, overrides = parser.parse_known_args()

@@ -27,7 +27,7 @@ command:
   - ${interpreter}
   - ${program}
   - "--task"
-  - "Ryan-Reach-SO-ARM101-Normalized-v0"
+  - "Ryan-Reach-SO-ARM101-Normalized"
   - "--headless"
   - "--num_envs"
   - "4096"

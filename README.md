@@ -1,6 +1,6 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=fff)](https://docs.python.org/3/whatsnew/3.12.html)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.7-ee4c2c?logo=pytorch&logoColor=white)](https://github.com/pytorch/pytorch/releases/tag/v2.7.0)
-[![Isaac Lab](https://img.shields.io/badge/Isaac_Lab-v3.0.0--EA-76B900?logo=nvidia&logoColor=white)](https://github.com/isaac-sim/IsaacLab/tree/v3.0.0-EA)
+[![Isaac Lab](https://img.shields.io/badge/Isaac_Lab-v3.0.0-76B900?logo=nvidia&logoColor=white)](https://github.com/isaac-sim/IsaacLab/tree/v3.0.0)
 [![Robot](https://img.shields.io/badge/Robot-SO--ARM101-1f6feb?logo=github&logoColor=white)](https://github.com/TheRobotStudio/SO-ARM100)
 ![Tests](https://github.com/ryan-donald/ppo/actions/workflows/tests.yaml/badge.svg)
 
@@ -17,7 +17,7 @@ To use this package, follow the steps below:
 * Clone this repository.
 * Run the command "pip install -e ." within this repository.
 * You are all set and can now train agents within IsaacLab using this package. An example training run command is below:
-* "python -m ryan_ppo.isaaclab.train --task Ryan-Reach-SO-ARM101-Normalized-v0 --num_envs 2048 --headless".
+* "python -m ryan_ppo.isaaclab.train --task Ryan-Reach-SO-ARM101-Normalized --num_envs 2048 --headless".
 
 # Features
 Fully functional PPO agent, with a configuration file where you can set hyperparameters depending on the task you are running. Additionally, training runs are tracked and stored utilizing Weights and Biases, allowing for easy performance tracking and comparison between runs. 

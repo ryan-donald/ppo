@@ -1,6 +1,6 @@
 import argparse
 
-from isaaclab.app import AppLauncher
+from isaaclab.app import add_launcher_args, launch_simulation
 
 
 def play(args_cli):
@@ -9,20 +9,22 @@ def play(args_cli):
     if args_cli.video:
         args_cli.enable_cameras = True
 
-    # launch omniverse app
-    app_launcher = AppLauncher(args_cli)
-    simulation_app = app_launcher.app
+    args_cli.require_kit = True
+    with launch_simulation(None, args_cli):
+        _play(args_cli)
 
+
+def _play(args_cli):
     import os
     from datetime import datetime
 
     import gymnasium as gym
     import torch
+    from isaaclab.cli import load_external_tasks
     from isaaclab_tasks.utils import parse_env_cfg
 
-    import ryan_tasks.tasks  # noqa: F401
     from ryan_ppo.config import TrainConfig
-    from ryan_ppo.ppo import PPOAgent, strip_compile_prefix
+    from ryan_ppo.ppo import PPOAgent
     from ryan_ppo.utils import (
         env_dims,
         get_cfg_path,
@@ -32,10 +34,11 @@ def play(args_cli):
         set_seed,
     )
 
+    # registers external tasks for isaaclab.
+    load_external_tasks()
+
     # the suppressed-library list lives in utils.install_rich_traceback.
     install_rich_traceback()
-
-    device = get_device()
 
     set_seed(args_cli.seed)
 
@@ -47,6 +50,7 @@ def play(args_cli):
     # create environment. rgb_array rendering is only needed when recording.
     render_mode = "rgb_array" if args_cli.video else None
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode=render_mode)
+    device = get_device(env.unwrapped.device)
 
     if args_cli.video:
         video_dir = os.path.join(
@@ -77,7 +81,7 @@ def play(args_cli):
     checkpoint = torch.load(args_cli.checkpoint, map_location=device)
     if isinstance(checkpoint, dict) and "actor" in checkpoint:
         checkpoint = checkpoint["actor"]
-    agent.actor.load_state_dict(strip_compile_prefix(checkpoint))
+    agent.actor.load_state_dict(checkpoint)
     print(f"Loaded checkpoint: {args_cli.checkpoint}")
 
     state, info = env.reset()
@@ -95,7 +99,6 @@ def play(args_cli):
 
     # closing flushes the final video file.
     env.close()
-    simulation_app.close()
 
 
 if __name__ == "__main__":
@@ -141,8 +144,8 @@ if __name__ == "__main__":
         help="Interval between videos (in steps).",
     )
 
-    # append AppLauncher cli args
-    AppLauncher.add_app_launcher_args(parser)
+    # append the simulation launcher's cli args
+    add_launcher_args(parser)
 
     # parse the arguments
     args_cli, _ = parser.parse_known_args()

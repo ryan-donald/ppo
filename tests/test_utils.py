@@ -7,12 +7,12 @@ from ryan_ppo.utils import PhaseTimer, get_cfg_path, get_device
 
 
 def test_play_task_falls_back_to_training_cfg():
-    assert get_cfg_path("Ryan-Ant-Play-v0") == get_cfg_path("Ryan-Ant-v0")
+    assert get_cfg_path("Ryan-Ant-Play") == get_cfg_path("Ryan-Ant")
     # a Play task with its own file keeps it.
-    play = get_cfg_path("Ryan-Reach-SO-ARM101-Normalized-Play-v0")
-    assert play.name == "Ryan-Reach-SO-ARM101-Normalized-Play-v0.ini"
+    play = get_cfg_path("Ryan-Reach-SO-ARM101-Normalized-Play")
+    assert play.name == "Ryan-Reach-SO-ARM101-Normalized-Play.ini"
     with pytest.raises(FileNotFoundError):
-        get_cfg_path("No-Such-Task-Play-v0")
+        get_cfg_path("No-Such-Task-Play")
 
 
 def test_explicit_device_does_not_probe_cuda(monkeypatch):
