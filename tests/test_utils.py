@@ -11,7 +11,7 @@ def test_play_task_falls_back_to_training_cfg():
     # a Play task with its own file keeps it.
     play = get_cfg_path("Ryan-Reach-SO-ARM101-Normalized-Play")
     assert play.name == "Ryan-Reach-SO-ARM101-Normalized-Play.ini"
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(AssertionError):
         get_cfg_path("No-Such-Task-Play")
 
 

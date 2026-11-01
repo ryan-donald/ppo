@@ -15,7 +15,7 @@ import torch
 SUPPRESSED_LIBRARIES = ("gymnasium",)
 
 
-def install_rich_traceback(show_locals: bool = False):
+def install_rich_traceback():
     """
     initialize the rich traceback, including suppressing specified libaries.
     """
@@ -27,13 +27,11 @@ def install_rich_traceback(show_locals: bool = False):
 
     suppress += [import_module(name) for name in SUPPRESSED_LIBRARIES]
 
-    rich.traceback.install(suppress=suppress, show_locals=show_locals)
+    rich.traceback.install(suppress=suppress)
     return sys.excepthook
 
 
-def get_device(device: str | torch.device | None = None) -> torch.device:
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+def get_device(device: str | torch.device) -> torch.device:
     device = torch.device(device)
     print(f"Using device: {device}")
     return device
@@ -47,8 +45,8 @@ class PhaseTimer:
     """
 
     def __init__(self, device: torch.device) -> None:
-        self.device = torch.device(device)
-        self.cuda = self.device.type == "cuda"
+        self.device = device
+        self.cuda = device.type == "cuda"
         if self.cuda:
             self.start_event = torch.cuda.Event(enable_timing=True)
             self.end_event = torch.cuda.Event(enable_timing=True)
@@ -173,12 +171,9 @@ def warmup_normalization(env, agent, state, num_steps: int):
 
 
 def get_cfg_path(task):
-    current_file_path = Path(__file__).resolve()
-    project_root = current_file_path.parents[2]
-    ini_file_path = project_root / "cfg" / f"{task}.ini"
+    cfg_dir = Path(__file__).resolve().parents[2] / "cfg"
+    ini_file_path = cfg_dir / f"{task}.ini"
     if not ini_file_path.exists() and task.endswith("-Play"):
-        ini_file_path = project_root / "cfg" / f"{task.removesuffix('-Play')}.ini"
-    if not ini_file_path.exists():
-        raise FileNotFoundError(f"Configuration file not found at: {ini_file_path}")
-
+        ini_file_path = cfg_dir / f"{task.removesuffix('-Play')}.ini"
+    assert ini_file_path.exists(), f"Configuration file not found at: {ini_file_path}"
     return ini_file_path

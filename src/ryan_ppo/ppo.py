@@ -42,12 +42,12 @@ class PPOAgent:
         cfg: TrainConfig,
         device: torch.device = torch.device("cpu"),
     ) -> None:
-        device = torch.device(device)
         if cfg.use_normalization:
             self.obs_normalizer = ObsNormalization(state_dim)
         else:
             self.obs_normalizer = None
 
+        self.cfg = cfg
         self.device = device
 
         self.actor = Actor(
@@ -70,7 +70,7 @@ class PPOAgent:
 
         # on cuda, each minibatch step is replayed as a CUDA graph.
         self.use_cuda_graph_update = device.type == "cuda"
-        self.graph_key = None
+        self.graph_step = None
 
         self.optimizer = optim.Adam(
             self.actor_params + self.critic_params,
@@ -78,21 +78,6 @@ class PPOAgent:
             fused=(device.type == "cuda"),
             capturable=self.use_cuda_graph_update,
         )
-
-        # hyperparameters
-        self.gamma = cfg.gamma
-        self.gae_lambda = cfg.gae_lambda
-        self.clip_epsilon = cfg.clip_epsilon
-        self.value_clip = cfg.value_clip
-        self.max_grad_norm = cfg.max_grad_norm
-        self.entropy_coef = cfg.entropy_coef
-        self.value_coef = cfg.value_coef
-        self.desired_kl = cfg.desired_kl
-        self.schedule_type = cfg.schedule_type
-        self.max_lr = cfg.max_lr
-        self.min_lr = cfg.min_lr
-
-        self.update_count = 0
 
     @property
     def current_lr(self) -> float:
@@ -108,26 +93,24 @@ class PPOAgent:
         # adaptive kl, but done on GPU fully for speed.
         lr = self.lr_t
         adjusted = torch.where(
-            kl > self.desired_kl * KL_LR_DECREASE_FACTOR,
+            kl > self.cfg.desired_kl * KL_LR_DECREASE_FACTOR,
             lr / LR_ADJUST_RATIO,
             torch.where(
-                (kl > 0.0) & (kl < self.desired_kl / KL_LR_INCREASE_FACTOR),
+                (kl > 0.0) & (kl < self.cfg.desired_kl / KL_LR_INCREASE_FACTOR),
                 lr * LR_ADJUST_RATIO,
                 lr,
             ),
         )
-        self.lr_t.copy_(adjusted.clamp_(self.min_lr, self.max_lr))
+        self.lr_t.copy_(adjusted.clamp_(self.cfg.min_lr, self.cfg.max_lr))
 
     @torch.compile
     def update_normalization(self, obs: torch.Tensor) -> None:
-        if self.obs_normalizer is not None:
-            self.obs_normalizer.update(obs)
+        self.obs_normalizer.update(obs)
 
     def save_checkpoint(self, path: str, iteration: int) -> None:
         # save a complete checkpoint for resuming training. includes weights,
-        # optimizer, lr, and number of updates. allows for seamless saving of
-        # checkpoints to be used for resuming later, or for experimenting with
-        # fine-tuning.
+        # optimizer and lr. allows for seamless saving of checkpoints to be used
+        # for resuming later, or for experimenting with fine-tuning.
 
         torch.save(
             {
@@ -136,7 +119,6 @@ class PPOAgent:
                 "critic": self.critic.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "current_lr": self.current_lr,
-                "update_count": self.update_count,
             },
             path,
         )
@@ -153,7 +135,6 @@ class PPOAgent:
             group["lr"] = self.lr_t
             group["capturable"] = self.use_cuda_graph_update
         self.current_lr = checkpoint["current_lr"]
-        self.update_count = checkpoint.get("update_count", 0)
         return checkpoint["iteration"]
 
     def select_action(
@@ -205,15 +186,16 @@ class PPOAgent:
         next_value: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # computes generalized advantage estimates (GAE)
+        cfg = self.cfg
 
         # bootstrap the reward for steps where the env truncated.
-        rewards = rewards + self.gamma * values * truncs
+        rewards = rewards + cfg.gamma * values * truncs
 
         values_extended = torch.cat([values, next_value.unsqueeze(0)], dim=0)
 
         deltas = (
             rewards
-            + self.gamma * values_extended[1:] * (1 - dones)
+            + cfg.gamma * values_extended[1:] * (1 - dones)
             - values_extended[:-1]
         )
 
@@ -222,7 +204,7 @@ class PPOAgent:
         gae = torch.zeros_like(next_value)
 
         for step in reversed(range(num_steps)):
-            gae = deltas[step] + self.gamma * self.gae_lambda * (1 - dones[step]) * gae
+            gae = deltas[step] + cfg.gamma * cfg.gae_lambda * (1 - dones[step]) * gae
             advantages[step] = gae
 
         returns = advantages + values
@@ -236,6 +218,7 @@ class PPOAgent:
         indices: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # single minibatch loss and kl in a single compiled function.
+        cfg = self.cfg
 
         batch_states = batch.states[indices]
         batch_actions = batch.actions[indices]
@@ -264,7 +247,7 @@ class PPOAgent:
         ratios = torch.exp(log_probs - batch_log_probs_old)
         surr1 = ratios * batch_advantages
         surr2 = (
-            torch.clamp(ratios, 1.0 - self.clip_epsilon, 1.0 + self.clip_epsilon)
+            torch.clamp(ratios, 1.0 - cfg.clip_epsilon, 1.0 + cfg.clip_epsilon)
             * batch_advantages
         )
         actor_loss = -torch.min(surr1, surr2).mean()
@@ -272,14 +255,14 @@ class PPOAgent:
         # compute clipped value loss
         values = self.critic(batch_states).view(-1)
         value_pred_clipped = batch_values_old + torch.clamp(
-            values - batch_values_old, -self.value_clip, self.value_clip
+            values - batch_values_old, -cfg.value_clip, cfg.value_clip
         )
         value_losses = (values - batch_returns).pow(2)
         value_losses_clipped = (value_pred_clipped - batch_returns).pow(2)
         critic_loss = torch.max(value_losses, value_losses_clipped).mean()
 
         # total loss
-        loss = actor_loss + self.value_coef * critic_loss - self.entropy_coef * entropy
+        loss = actor_loss + cfg.value_coef * critic_loss - cfg.entropy_coef * entropy
 
         return loss, kl
 
@@ -306,7 +289,6 @@ class PPOAgent:
             kl_sum = self.load_graph_batch(batch, batch_size)
         else:
             kl_sum = torch.zeros((), device=self.device)
-        num_updates = 0
 
         # training loop
         for _ in range(epochs):
@@ -323,14 +305,10 @@ class PPOAgent:
                     self.graph_step()
                 else:
                     self.minibatch_step(batch, batch_indices, kl_sum)
-                num_updates += 1
 
         # average KL divergence over all minibatch updates.
-        mean_kl = (kl_sum / num_updates).item()
-        if not math.isfinite(mean_kl):
-            raise RuntimeError(f"KL is non-finite at update {self.update_count}")
-
-        self.update_count += 1
+        mean_kl = (kl_sum / (epochs * num_mini_batches)).item()
+        assert math.isfinite(mean_kl), f"KL is non-finite: {mean_kl}"
 
         return mean_kl
 
@@ -349,24 +327,21 @@ class PPOAgent:
 
         kl = kl.detach()
         kl_sum += kl
-        if self.schedule_type == "adaptive":
+        if self.cfg.schedule_type == "adaptive":
             self.adapt_lr_device(kl)
 
         # clip actor and critic norms seperately, as they can interfere.
-        torch.nn.utils.clip_grad_norm_(self.actor_params, self.max_grad_norm)
-        torch.nn.utils.clip_grad_norm_(self.critic_params, self.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.actor_params, self.cfg.max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.critic_params, self.cfg.max_grad_norm)
         self.optimizer.step()
 
         # clamp log_std post optimizer to keep gradients useful
         self.actor.log_std.data.clamp_(min=self.log_std_min, max=self.log_std_max)
 
     def load_graph_batch(self, batch: RolloutBatch, batch_size: int) -> torch.Tensor:
-        # a graph replays on fixed memory, so the batch is copied into it. a new batch
-        # shape captures a new graph.
+        # a graph replays on fixed memory, so the batch is copied into it.
         tensors = vars(batch)
-        key = (tuple((name, t.shape) for name, t in tensors.items()), batch_size)
-        if key != self.graph_key:
-            self.graph_key = key
+        if self.graph_step is None:
             self.graph_batch = dataclasses.replace(
                 batch, **{name: torch.empty_like(t) for name, t in tensors.items()}
             )

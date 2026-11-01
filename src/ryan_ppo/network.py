@@ -57,9 +57,9 @@ class Actor(MLP):
         self,
         state_dim: int,
         action_dim: int,
-        hidden_dims: Sequence[int] = (64, 64),
-        normalization_object: ObsNormalization | None = None,
-        std: float = 0.5,
+        hidden_dims: Sequence[int],
+        normalization_object: ObsNormalization | None,
+        std: float,
     ) -> None:
         super().__init__(
             state_dim, action_dim, hidden_dims, normalization_object, output_gain=0.01
@@ -77,8 +77,8 @@ class Critic(MLP):
     def __init__(
         self,
         state_dim: int,
-        hidden_dims: Sequence[int] = (64, 64),
-        normalization_object: ObsNormalization | None = None,
+        hidden_dims: Sequence[int],
+        normalization_object: ObsNormalization | None,
     ) -> None:
         super().__init__(
             state_dim, 1, hidden_dims, normalization_object, output_gain=1.0

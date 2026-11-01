@@ -19,13 +19,13 @@ class RolloutStats:
     reduced episode statistics for one rollout, consumed by the logger.
     """
 
-    avg_reward: float
-    min_reward: float
-    max_reward: float
-    std_reward: float
-    avg_entropy: float
-    num_episodes: int
     term_rewards: dict[str, float]
+    avg_reward: float = 0.0
+    min_reward: float = 0.0
+    max_reward: float = 0.0
+    std_reward: float = 0.0
+    avg_entropy: float = 0.0
+    num_episodes: int = 0
 
 
 class EpisodeTracker:
@@ -58,15 +58,7 @@ class EpisodeTracker:
         self.ret_max = torch.full((), -float("inf"), dtype=torch.float64, device=device)
 
         # mutated in place each summarize().
-        self.last = RolloutStats(
-            avg_reward=0.0,
-            min_reward=0.0,
-            max_reward=0.0,
-            std_reward=0.0,
-            avg_entropy=0.0,
-            num_episodes=0,
-            term_rewards={name: 0.0 for name in self.term_names},
-        )
+        self.last = RolloutStats(term_rewards={name: 0.0 for name in self.term_names})
 
     def record_step(
         self,
@@ -230,8 +222,8 @@ class TrainingLogger:
         rollout_time: float,
         update_time: float,
         *,
-        preparation_time: float = 0.0,
-        warmup: bool = False,
+        preparation_time: float,
+        warmup: bool,
     ) -> None:
         """
         log one iteration to wandb and refresh the terminal table. `iteration`
@@ -355,27 +347,17 @@ def build_metric_table(header: str, stats_dict: dict) -> Table:
 
 
 def format_values(name, value):
-
-    if name == "Runtime" or name == "Remaining Time":
+    if name in ("Runtime", "Remaining Time"):
         if value > 60:
-            formatted_value = f"{value // 60:.0f}m {value % 60:.0f}s"
-        else:
-            formatted_value = f"{value:.0f}s"
-        return formatted_value
-    elif name in ("Rollout Time", "Preparation Time", "Update Time"):
+            return f"{value // 60:.0f}m {value % 60:.0f}s"
+        return f"{value:.0f}s"
+    if name in ("Rollout Time", "Preparation Time", "Update Time"):
         if value >= 1:
             return f"{value:.2f}s"
         return f"{value * 1000:.0f}ms"
-    elif isinstance(value, (int, float)) and not isinstance(value, bool):
-        abs_val = abs(value)
-        if abs_val >= 1_000_000:
-            formatted_value = f"{value / 1_000_000:.2f}M"
-        elif abs_val >= 1_000:
-            formatted_value = f"{value / 1_000:.2f}K"
-        else:
-            formatted_value = f"{value:.6f}".rstrip("0").rstrip(".")
-            if not formatted_value:
-                formatted_value = "0"
-        return formatted_value
-    else:
-        return str(value)
+    abs_val = abs(value)
+    if abs_val >= 1_000_000:
+        return f"{value / 1_000_000:.2f}M"
+    if abs_val >= 1_000:
+        return f"{value / 1_000:.2f}K"
+    return f"{value:.6f}".rstrip("0").rstrip(".")

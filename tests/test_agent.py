@@ -10,7 +10,9 @@ from ryan_ppo.storage import RolloutBatch
 from ryan_ppo.utils import warmup_normalization
 
 
-def make_agent(state_dim, action_dim, hidden_dims, device="cpu", **overrides):
+def make_agent(
+    state_dim, action_dim, hidden_dims, device=torch.device("cpu"), **overrides
+):
     # builds an agent with the defaults the constructor used before TrainConfig
     # was folded in, so test behavior is unchanged.
     cfg = TrainConfig(
@@ -285,7 +287,8 @@ def test_normalization_is_frozen_until_update_finishes(monkeypatch):
 def test_minibatch_indexing_matches_preselected_loss_and_gradients(normalize):
     torch.manual_seed(8)
     agent = make_agent(4, 2, [2, 2], use_normalization=normalize)
-    agent.update_normalization(torch.randn(8, 4) * 3 + 10)
+    if normalize:
+        agent.update_normalization(torch.randn(8, 4) * 3 + 10)
     batch = make_rollout(agent, torch.randn(8, 4) * 2 + 8)
     indices = torch.tensor([5, 1, 7, 0])
     indexed_loss, indexed_kl = agent.minibatch_loss(batch, indices)

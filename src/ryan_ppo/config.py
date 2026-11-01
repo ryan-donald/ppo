@@ -53,15 +53,11 @@ class TrainConfig:
                 continue
             type_name = getattr(field.type, "__name__", field.type)
             read = getattr(train, TYPE_READERS[type_name])
-            if field.default is not MISSING:
-                kwargs[field.name] = read(field.name, fallback=field.default)
-            elif field.name in train:
-                kwargs[field.name] = read(field.name)
-            else:
-                raise KeyError(
-                    f"{path}: required [train] key {field.name!r} is missing from "
-                    f"both the task file and defaults.ini"
-                )
+            assert field.default is not MISSING or field.name in train, (
+                f"{path}: required [train] key {field.name!r} is missing from "
+                f"both the task file and defaults.ini"
+            )
+            kwargs[field.name] = read(field.name, fallback=field.default)
 
         hidden_dims = [int(x) for x in config["policy"]["hidden_dims"].split(",")]
         return cls(hidden_dims=hidden_dims, **kwargs)

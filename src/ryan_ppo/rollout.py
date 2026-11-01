@@ -42,7 +42,7 @@ class RolloutStepper:
         self.store_steps = [
             lambda step=step: self.store_step(step) for step in range(storage.num_steps)
         ]
-        if torch.device(device).type == "cuda":
+        if device.type == "cuda":
             # one memory pool shared by the rollout graphs.
             pool = torch.cuda.graph_pool_handle()
             self.act_step = CapturedStep(self.act_step, pool=pool)
@@ -78,16 +78,13 @@ class RolloutStepper:
         self.std.copy_(std)
 
     def store_step(self, step: int) -> None:
+        storage = self.storage
+        storage.states[step] = self.state
+        storage.actions[step] = self.action
+        storage.log_probs[step] = self.log_prob
+        storage.rewards[step] = self.reward
         # store steps where envs finished, either terminated or truncated
-        done = torch.logical_or(self.terminated, self.truncated)
-        self.storage.add(
-            step,
-            state=self.state,
-            action=self.action,
-            log_prob=self.log_prob,
-            reward=self.reward,
-            done=done.float(),
-            trunc=self.truncated.float(),
-            term_reward=self.term_reward * self.step_dt,
-            mu=self.mu,
-        )
+        storage.dones[step] = torch.logical_or(self.terminated, self.truncated).float()
+        storage.truncs[step] = self.truncated.float()
+        storage.term_rewards[step] = self.term_reward * self.step_dt
+        storage.mus[step] = self.mu

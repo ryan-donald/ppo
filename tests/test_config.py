@@ -86,7 +86,7 @@ def test_from_ini_missing_required_key_raises(tmp_path):
     path = tmp_path / "task.ini"
     path.write_text("[train]\ngamma = 0.99\n\n[policy]\nhidden_dims = 8,8\n")
 
-    with pytest.raises(KeyError, match="learning_rate"):
+    with pytest.raises(AssertionError, match="learning_rate"):
         TrainConfig.from_ini(path)
 
 

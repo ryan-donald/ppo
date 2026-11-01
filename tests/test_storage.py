@@ -28,18 +28,10 @@ def filled_storage():
     storage = RolloutStorage(
         STEPS, ENVS, STATE_DIM, ACTION_DIM, TERMS, torch.device("cpu")
     )
-    for step in range(STEPS):
-        storage.add(
-            step,
-            state=marker(STEPS, ENVS, STATE_DIM)[step],
-            action=marker(STEPS, ENVS, ACTION_DIM)[step],
-            log_prob=marker(STEPS, ENVS)[step],
-            reward=torch.zeros(ENVS),
-            done=torch.zeros(ENVS),
-            trunc=torch.zeros(ENVS),
-            term_reward=torch.zeros(ENVS, TERMS),
-            mu=marker(STEPS, ENVS, ACTION_DIM)[step],
-        )
+    storage.states[:] = marker(STEPS, ENVS, STATE_DIM)
+    storage.actions[:] = marker(STEPS, ENVS, ACTION_DIM)
+    storage.log_probs[:] = marker(STEPS, ENVS)
+    storage.mus[:] = marker(STEPS, ENVS, ACTION_DIM)
     return storage
 
 

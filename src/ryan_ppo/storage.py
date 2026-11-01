@@ -52,28 +52,6 @@ class RolloutStorage:
         self.term_rewards = torch.zeros(num_steps, num_envs, num_terms, device=device)
         self.mus = torch.zeros(num_steps, num_envs, action_dim, device=device)
 
-    def add(
-        self,
-        step: int,
-        *,
-        state: torch.Tensor,
-        action: torch.Tensor,
-        log_prob: torch.Tensor,
-        reward: torch.Tensor,
-        done: torch.Tensor,
-        trunc: torch.Tensor,
-        term_reward: torch.Tensor,
-        mu: torch.Tensor,
-    ) -> None:
-        self.states[step] = state
-        self.actions[step] = action
-        self.log_probs[step] = log_prob
-        self.rewards[step] = reward
-        self.dones[step] = done
-        self.truncs[step] = trunc
-        self.term_rewards[step] = term_reward
-        self.mus[step] = mu
-
     def flatten(
         self,
         *,
