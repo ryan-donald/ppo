@@ -25,6 +25,9 @@ Fully functional PPO agent, with a configuration file where you can set hyperpar
 ## Multiple Environments
 The base algorithm, defined in the files within the 'src/' directory, are portable to any gym-style environment. Within the 'src/' directory is an 'isaaclab/' directory containing a *train.py* and *play.py* file, which implement the algorithm specifically for IsaacLab. To use the algorithm in another set of environments, simply create your own *train.py* and *play.py* files for those environments in this format. 
 
+The 'mjwarp/' directory does this for MuJoCo Warp, through [mjlab](https://github.com/mujocolab/mjlab). Install mjlab, along with any package that registers extra tasks with it, then run any registered task that has a matching file in 'cfg/':
+* "python -m ryan_ppo.mjwarp.train --task Mjlab-Velocity-Flat-MicroDuck --num_envs 4096".
+
 ## Weights and Biases Parameter Sweeping
 This implementation supports parameter sweeping via Weights and Biases. To do this, create a YAML description file in the format of those in "cfg/sweeps/". Within this file, define either a set of discrete values or a distribution for each parameter that you want to be swept. Ensure that *train.py* contains checks for all of the parameters that are being swept to ensure they are actually being used in the runs. After this, run "wandb sweep <sweep config file>" followed by "wandb agent <username>/<project name>/<sweep id>". The results will be logged via Weights and Biases. Shown below is an example plot showing 50 different runs with a reach task, sweeping over a handful of parameters.
 
