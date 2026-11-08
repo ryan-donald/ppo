@@ -205,10 +205,10 @@ def test_checkpoint_roundtrip(tmp_path):
     # a saved checkpoint restores into a fresh agent with identical weights.
     agent = make_agent(4, 4, [2, 2])
     path = str(tmp_path / "checkpoint.pth")
-    agent.save_checkpoint(path, iteration=7)
+    agent.save_checkpoint(path, iteration=7, best_reward=1.5)
 
     other = make_agent(4, 4, [2, 2])
-    assert other.load_checkpoint(path) == 7
+    assert other.load_checkpoint(path) == (7, 1.5)
 
     for key, value in agent.actor.state_dict().items():
         assert torch.equal(value, other.actor.state_dict()[key])
@@ -224,7 +224,7 @@ def test_checkpoint_restores_adaptive_optimizer_step(tmp_path):
         p.grad = torch.ones_like(p)
     agent.optimizer.step()
     path = str(tmp_path / "checkpoint.pth")
-    agent.save_checkpoint(path, 1)
+    agent.save_checkpoint(path, 1, best_reward=0.0)
     resumed = make_agent(4, 2, [2, 2])
     resumed.load_checkpoint(path)
     for current in (agent, resumed):
@@ -236,6 +236,18 @@ def test_checkpoint_restores_adaptive_optimizer_step(tmp_path):
         current.optimizer.step()
     for expected, actual in zip(params, resumed.actor_params + resumed.critic_params):
         torch.testing.assert_close(actual, expected)
+
+
+def test_checkpoint_without_best_reward_loads(tmp_path):
+    # checkpoints saved before best_reward was stored still resume.
+    agent = make_agent(4, 2, [2, 2])
+    path = str(tmp_path / "checkpoint.pth")
+    agent.save_checkpoint(path, 3, best_reward=0.0)
+    checkpoint = torch.load(path)
+    del checkpoint["best_reward"]
+    torch.save(checkpoint, path)
+
+    assert make_agent(4, 2, [2, 2]).load_checkpoint(path) == (3, -math.inf)
 
 
 def make_rollout(agent, states):

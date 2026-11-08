@@ -109,7 +109,19 @@ def test_apply_sweep(tmp_path):
     path = tmp_path / "task.ini"
     path.write_text(TASK_INI)
     cfg = TrainConfig.from_ini(path)
-    cfg.apply_sweep({"lr": 0.001, "num_learning_epochs": 3})
+    cfg.apply_sweep(
+        {"learning_rate": 0.001, "num_learning_epochs": 3, "hidden_dims": [32, 32]}
+    )
     assert cfg.learning_rate == 0.001
     assert cfg.num_learning_epochs == 3
+    assert cfg.hidden_dims == [32, 32]
     assert cfg.gamma == 0.98
+
+
+def test_apply_sweep_rejects_unknown_parameter(tmp_path):
+    # a misspelled sweep parameter would otherwise sweep nothing.
+    path = tmp_path / "task.ini"
+    path.write_text(TASK_INI)
+    cfg = TrainConfig.from_ini(path)
+    with pytest.raises(AssertionError, match="lr"):
+        cfg.apply_sweep({"lr": 0.001})

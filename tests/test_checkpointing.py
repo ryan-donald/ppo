@@ -24,5 +24,5 @@ def test_best_requires_completed_episodes_but_snapshots_do_not(tmp_path):
     saver.save_iteration(agent, 100, 0.0, num_episodes=0)
     assert saver.best_reward == -1.0
     assert (tmp_path / "actor_iter_100.pth").exists()
-    agent.save_checkpoint.assert_any_call(tmp_path / "checkpoint_latest.pth", 100)
-    agent.save_checkpoint.assert_any_call(tmp_path / "checkpoint_100.pth", 100)
+    agent.save_checkpoint.assert_any_call(tmp_path / "checkpoint_latest.pth", 100, -1.0)
+    agent.save_checkpoint.assert_any_call(tmp_path / "checkpoint_100.pth", 100, -1.0)

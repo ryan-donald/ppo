@@ -21,6 +21,7 @@ class CheckpointSaver:
             int(it) for it in checkpoint_iters.split(",") if it.strip()
         }
         self.best_reward = -float("inf")
+        self.latest_path = self.log_path / "checkpoint_latest.pth"
         self.log_path.mkdir(parents=True, exist_ok=True)
 
     def save_weights(self, agent, suffix: str) -> None:
@@ -38,15 +39,22 @@ class CheckpointSaver:
         # periodic weight snapshots and a rolling resumable checkpoint
         if iteration % self.SNAPSHOT_EVERY == 0:
             self.save_weights(agent, f"iter_{iteration}")
-            agent.save_checkpoint(self.log_path / "checkpoint_latest.pth", iteration)
+            self.save_latest(agent, iteration)
 
         # full checkpoint bundles at requested iterations, for resuming or
         # fine-tuning later
         if iteration in self.checkpoint_iters:
             agent.save_checkpoint(
-                self.log_path / f"checkpoint_{iteration}.pth", iteration
+                self.log_path / f"checkpoint_{iteration}.pth",
+                iteration,
+                self.best_reward,
             )
+
+    def save_latest(self, agent, iteration: int) -> None:
+        agent.save_checkpoint(self.latest_path, iteration, self.best_reward)
 
     def save_final(self, agent, iteration: int) -> None:
         self.save_weights(agent, "final")
-        agent.save_checkpoint(self.log_path / "checkpoint_final.pth", iteration)
+        agent.save_checkpoint(
+            self.log_path / "checkpoint_final.pth", iteration, self.best_reward
+        )

@@ -77,7 +77,7 @@ if __name__ == "__main__":
         "--save",
         action="store_true",
         help="Enable saving of agents (Policy and Value networks)"
-        "every 100 updates, new best performance, and at the end",
+        "every 100 updates, new best performance, on ctrl+c, and at the end",
     )
     parser.add_argument(
         "--resume",

@@ -9,7 +9,7 @@ metric:
   goal: maximize
 
 parameters:
-  lr:
+  learning_rate:
     distribution: log_uniform_values
     min: 0.00005
     max: 0.005

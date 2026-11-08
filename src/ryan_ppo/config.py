@@ -63,15 +63,8 @@ class TrainConfig:
         return cls(hidden_dims=hidden_dims, **kwargs)
 
     def apply_sweep(self, sweep):
-        # applys values from wandb sweep to current config.
-        overrides = {
-            "lr": "learning_rate",
-            "gamma": "gamma",
-            "num_learning_epochs": "num_learning_epochs",
-            "desired_kl": "desired_kl",
-            "clip_epsilon": "clip_epsilon",
-            "entropy_coef": "entropy_coef",
-        }
-        for key, attr in overrides.items():
-            if key in sweep:
-                setattr(self, attr, sweep[key])
+        # sets each swept parameter on the config field of the same name.
+        names = {field.name for field in fields(self)}
+        for key, value in sweep.items():
+            assert key in names, f"sweep parameter {key!r} is not a TrainConfig field"
+            setattr(self, key, value)

@@ -85,10 +85,10 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
     )
 
     # resume from a checkpoint. fully resumes the training, with actor, critic,
-    # optimizer, lr, and step count for correct curriculum firing.
+    # optimizer, lr, best reward, and step count for correct curriculum firing.
     start_iter = 0
     if args_cli.resume:
-        start_iter = agent.load_checkpoint(args_cli.resume)
+        start_iter, saver.best_reward = agent.load_checkpoint(args_cli.resume)
         env.unwrapped.common_step_counter = start_iter * cfg.num_steps_per_env
         print(f"Resumed from {args_cli.resume} at iteration {start_iter}.")
     elif cfg.use_normalization:
@@ -111,10 +111,16 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
     logger.start()
 
     # with ctrl+c closing the script, the terminal breaks without this.
+    stop_requested = False
+
     def _on_sigint(signum, frame):
+        nonlocal stop_requested
         logger.stop()
         signal.signal(signal.SIGINT, signal.SIG_DFL)
-        raise KeyboardInterrupt
+        if not args_cli.save:
+            raise KeyboardInterrupt
+        print("Stopping after this iteration, press ctrl+c again to quit now.")
+        stop_requested = True
 
     signal.signal(signal.SIGINT, _on_sigint)
 
@@ -201,6 +207,11 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
             saver.save_iteration(
                 agent, update + 1, stats.avg_reward, num_episodes=stats.num_episodes
             )
+
+        if stop_requested:
+            saver.save_latest(agent, update + 1)
+            print(f"Saved {saver.latest_path} at iteration {update + 1}.")
+            raise KeyboardInterrupt
 
     logger.stop()
     wandb.finish()

@@ -107,7 +107,7 @@ class PPOAgent:
     def update_normalization(self, obs: torch.Tensor) -> None:
         self.obs_normalizer.update(obs)
 
-    def save_checkpoint(self, path: str, iteration: int) -> None:
+    def save_checkpoint(self, path: str, iteration: int, best_reward: float) -> None:
         # save a complete checkpoint for resuming training. includes weights,
         # optimizer and lr. allows for seamless saving of checkpoints to be used
         # for resuming later, or for experimenting with fine-tuning.
@@ -119,11 +119,12 @@ class PPOAgent:
                 "critic": self.critic.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "current_lr": self.current_lr,
+                "best_reward": best_reward,
             },
             path,
         )
 
-    def load_checkpoint(self, path: str) -> int:
+    def load_checkpoint(self, path: str) -> tuple[int, float]:
         # fully loads the checkpoint saved by the save_checkpoint() function.
 
         checkpoint = torch.load(path, map_location=self.device)
@@ -135,7 +136,7 @@ class PPOAgent:
             group["lr"] = self.lr_t
             group["capturable"] = self.use_cuda_graph_update
         self.current_lr = checkpoint["current_lr"]
-        return checkpoint["iteration"]
+        return checkpoint["iteration"], checkpoint.get("best_reward", -math.inf)
 
     def select_action(
         self, state_obs: torch.Tensor

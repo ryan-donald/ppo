@@ -146,3 +146,22 @@ def test_train_agent_resumes_from_checkpoint(logged):
     # picks up at iteration 2, with the env step counter restored for curricula.
     assert [d["step"] for d in logged] == [2, 3]
     assert env.common_step_counter == 4 * NUM_STEPS_PER_ENV
+
+
+class InterruptedEnv(FakeReachEnv):
+    # sends ctrl+c partway through the second iteration's rollout, counting the
+    # normalizer warm-up rollout and the first iteration before it.
+    def step(self, action):
+        if self.common_step_counter == 2 * NUM_STEPS_PER_ENV + 5:
+            signal.raise_signal(signal.SIGINT)
+        return super().step(action)
+
+
+def test_ctrl_c_saves_after_finishing_the_iteration(logged):
+    with pytest.raises(KeyboardInterrupt):
+        run(make_args(max_iterations=10, save=True), env=InterruptedEnv())
+
+    # the interrupted iteration still finishes and is logged, then saved.
+    assert [d["step"] for d in logged] == [0, 1]
+    (run_dir,) = Path("ppo_logs/Fake-Reach").iterdir()
+    assert torch.load(run_dir / "checkpoint_latest.pth")["iteration"] == 2
