@@ -28,7 +28,6 @@ def install_rich_traceback():
     suppress += [import_module(name) for name in SUPPRESSED_LIBRARIES]
 
     rich.traceback.install(suppress=suppress)
-    return sys.excepthook
 
 
 def get_device(device: str | torch.device) -> torch.device:

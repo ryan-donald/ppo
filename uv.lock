@@ -867,7 +867,7 @@ requires-dist = [
     { name = "gymnasium" },
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "rich" },
-    { name = "torch", specifier = ">=2.7.0" },
+    { name = "torch", specifier = ">=2.9.0" },
     { name = "wandb" },
 ]
 
