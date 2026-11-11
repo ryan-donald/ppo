@@ -70,6 +70,41 @@ Each of the three tasks also has a direct workflow version running on Newton (Mu
 | sb3 | 620,027 | 317 | — | 4.65× |
 | rsl_rl | 503,670 | 390 | 145 | 5.72× |
 
+## Steel physics
+
+[Steel](https://github.com/newton-physics/newton) is a new open-source physics engine from Skild AI. It is integrated into the main branch of newton, and will be integrated in Isaac Lab soon. They have large claims of up to 13x faster and 3x less memory usage compared to PhysX simulation. I wanted to test this out since I am very interested in fast simulators. Results from my tests are shown below on the same setup as I use for the standard Newton and PhysX.
+
+**Cartpole (Steel)** — 16 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **3,889,783** | **34** | **4** | — |
+| skrl | 1,690,815 | 78 | 35 | 2.30× |
+| rl_games | 1,650,071 | 79 | 35 | 2.36× |
+| rsl_rl | 1,646,716 | 80 | 38 | 2.36× |
+| sb3 | 867,092 | 151 | — | 4.49× |
+
+**Ant (Steel)** — 32 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **2,408,226** | **109** | **27** | — |
+| rl_games | 1,715,787 | 153 | 50 | 1.40× |
+| skrl | 1,688,172 | 155 | 55 | 1.43× |
+| rsl_rl | 1,311,406 | 200 | 59 | 1.84× |
+| sb3 | 628,188 | 417 | — | 3.83× |
+
+**Reach (Steel)** — 24 steps/env
+
+| Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | ryan_ppo speedup |
+|---|---:|---:|---:|---:|
+| **ryan_ppo (this repo)** | **2,708,171** | **73** | **11** | — |
+| skrl | 988,264 | 199 | 128 | 2.74× |
+| rl_games | 939,505 | 209 | 134 | 2.88× |
+| rsl_rl | 692,785 | 284 | 151 | 3.91× |
+| sb3 | 579,391 | 339 | — | 4.67× |
+
+
 ## Learning
 
 The above sections focus on how the training throughput of my library compares to the other libraries, measured with short runs that don't learn a full policy. This is only relevant if my library also learns the tasks as well as them. To measure this, I also ran a number of runs to verify the learned behavior is on par or better than the other libraries. I did this with three tasks, Cartpole, Ant, and Franka Reach. Each library performs a training run on the tasks, one for each of three set seeds (42, 43, 44), using the config that is provided with Isaac Lab by that library for each task. These were all run on an RTX 5080, with 8192 parallel envs. Some adjustments had to be made for rl_games and sb3, to scale from the default 4096 envs to 8192 envs. The rewards are the median across the three seeds, and the "final" rewards value is the mean of the last 10% of the training run. Range is 25th-75th percentile.
