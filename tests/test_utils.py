@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pytest
 import torch
 
-from ryan_ppo.utils import PhaseTimer, get_cfg_path, get_device
+from ryan_ppo.utils import CapturedStep, PhaseTimer, get_cfg_path, get_device
 
 
 def test_play_task_falls_back_to_training_cfg():
@@ -48,3 +48,19 @@ def test_cuda_timer_defers_synchronization_without_using_gpu(monkeypatch):
     end.synchronize.assert_not_called()
     assert timer.seconds() == pytest.approx(0.25)
     end.synchronize.assert_called_once()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA graphs are CUDA-only")
+def test_captured_steps_warm_up_on_one_shared_side_stream():
+    # the allocator caches memory per stream, so all warmups share one side stream.
+    seen = []
+    steps = [
+        CapturedStep(lambda: seen.append(torch.cuda.current_stream()), warmup_steps=2)
+        for _ in range(2)
+    ]
+    for step in steps:
+        step()
+        step()
+    assert len(seen) == 4
+    assert all(stream == seen[0] for stream in seen)
+    assert seen[0] != torch.cuda.default_stream()

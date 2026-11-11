@@ -61,11 +61,11 @@ I benchmarked this implementation against the four RL libraries bundled with Isa
 
 **Throughput.** My library had the highest training throughput on each task that I tested, when compared to the libraries that ship with Isaac Lab.
 
-| Task | Manager, PhysX | vs next fastest | Direct, Newton | vs next fastest |
-|---|---:|---:|---:|---:|
-| Cartpole | 1,816,704 | 1.54× | 3,508,178 | 2.02× |
-| Ant | 994,079 | 1.11× | 2,097,027 | 1.38× |
-| SO-ARM101 Reach | 1,947,558 | 2.06× | 2,880,358 | 2.60× |
+| Task | Manager, PhysX | vs next fastest | VRAM, GiB (others) | Direct, Newton | vs next fastest | VRAM, GiB (others) |
+|---|---:|---:|---:|---:|---:|---:|
+| Cartpole | 1,946,720 | 1.75× | 3.8 (3.5) | 4,003,560 | 2.29× | 0.8 (0.5) |
+| Ant | 999,627 | 1.13× | 5.0 (4.4–4.5) | 2,036,439 | 1.31× | 2.0 (1.2–1.4) |
+| SO-ARM101 Reach | 2,042,640 | 2.54× | 4.5 (3.9–4.1) | 2,426,587 | 2.41× | 1.5 (1.0–1.1) |
 
 Each library has the same physics latency, so the throughput is driven by how fast the surrounding code in a rollout is, and how fast the update step is. I spent time ensuring that there are minimal GPU to host syncs during this, and that the different functions are compiled into efficient CUDA graphs.
 

@@ -391,6 +391,51 @@ def test_graph_update_does_not_write_into_callers_batch():
         assert torch.equal(getattr(first, name), t), name
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="graph update is CUDA-only")
+def test_registered_batch_update_matches_copied_batch():
+    # reading a registered batch in place must train exactly like copying it in.
+    cuda = torch.device("cuda")
+    torch.manual_seed(11)
+    fixed = make_agent(4, 2, [8, 8], device=cuda)
+    torch.manual_seed(11)
+    copied = make_agent(4, 2, [8, 8], device=cuda)
+    registered = make_rollout(fixed, torch.randn(64, 4, device="cuda"))
+    fixed.use_fixed_batch(registered)
+    # 4 minibatch steps per update: the graph is captured during the first one.
+    for i in range(3):
+        rollout = make_rollout(fixed, torch.randn(64, 4, device="cuda"))
+        for name, t in vars(rollout).items():
+            getattr(registered, name).copy_(t)
+        clone = replace(
+            rollout, **{name: t.clone() for name, t in vars(rollout).items()}
+        )
+        torch.manual_seed(100 + i)
+        kl_fixed = fixed.update(registered, epochs=2, num_mini_batches=2)
+        torch.manual_seed(100 + i)
+        kl_copied = copied.update(clone, epochs=2, num_mini_batches=2)
+        assert kl_fixed == pytest.approx(kl_copied)
+    assert fixed.graph_batch is registered
+    for a, b in zip(
+        fixed.actor_params + fixed.critic_params,
+        copied.actor_params + copied.critic_params,
+    ):
+        torch.testing.assert_close(a, b)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="graph update is CUDA-only")
+def test_registered_batch_receives_other_batches():
+    # a batch that is not the registered one is copied into the registered tensors.
+    torch.manual_seed(12)
+    agent = make_agent(4, 2, [8, 8], device=torch.device("cuda"))
+    registered = make_rollout(agent, torch.randn(64, 4, device="cuda"))
+    agent.use_fixed_batch(registered)
+    agent.update(registered, epochs=2, num_mini_batches=2)
+    other = make_rollout(agent, torch.randn(64, 4, device="cuda"))
+    agent.update(other, epochs=2, num_mini_batches=2)
+    for name in ("states", "actions", "log_probs_old", "returns", "mus_old"):
+        assert torch.equal(getattr(registered, name), getattr(other, name)), name
+
+
 @pytest.mark.parametrize("value_clip,clipped", [(0.2, True), (math.inf, False)])
 def test_value_clip_zeroes_critic_gradient_past_the_clip(value_clip, clipped):
     torch.manual_seed(9)

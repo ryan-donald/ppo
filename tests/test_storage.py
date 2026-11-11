@@ -95,3 +95,25 @@ def test_flatten_rejects_positional_args():
 
     with pytest.raises(TypeError):
         storage.flatten(r, r, r, torch.rand(ACTION_DIM))
+
+
+def test_flatten_of_own_buffers_shares_their_memory():
+    # the update graph reads storage in place, so the flattened batch must be views.
+    storage = filled_storage()
+    batch = storage.flatten(
+        returns=storage.returns,
+        advantages=storage.advantages,
+        values_old=storage.values,
+        std_old=torch.rand(ACTION_DIM),
+    )
+    for flat, buffer in (
+        (batch.states, storage.states),
+        (batch.actions, storage.actions),
+        (batch.log_probs_old, storage.log_probs),
+        (batch.mus_old, storage.mus),
+        (batch.returns, storage.returns),
+        (batch.advantages, storage.advantages),
+        (batch.values_old, storage.values),
+    ):
+        assert flat.shape[0] == N
+        assert flat.data_ptr() == buffer.data_ptr()
