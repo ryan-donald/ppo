@@ -71,6 +71,7 @@ class PPOAgent:
         # on cuda, each minibatch step is replayed as a CUDA graph.
         self.use_cuda_graph_update = device.type == "cuda"
         self.graph_step = None
+        self.graph_batch = None
 
         self.optimizer = optim.Adam(
             self.actor_params + self.critic_params,
@@ -339,13 +340,18 @@ class PPOAgent:
         # clamp log_std post optimizer to keep gradients useful
         self.actor.log_std.data.clamp_(min=self.log_std_min, max=self.log_std_max)
 
+    def use_fixed_batch(self, batch: RolloutBatch) -> None:
+        assert self.graph_step is None, "call before the first update"
+        self.graph_batch = batch
+
     def load_graph_batch(self, batch: RolloutBatch, batch_size: int) -> torch.Tensor:
         # a graph replays on fixed memory, so the batch is copied into it.
         tensors = vars(batch)
         if self.graph_step is None:
-            self.graph_batch = dataclasses.replace(
-                batch, **{name: torch.empty_like(t) for name, t in tensors.items()}
-            )
+            if self.graph_batch is None:
+                self.graph_batch = dataclasses.replace(
+                    batch, **{name: torch.empty_like(t) for name, t in tensors.items()}
+                )
             self.graph_indices = torch.empty(
                 batch_size, dtype=torch.long, device=self.device
             )
@@ -357,6 +363,8 @@ class PPOAgent:
             )
 
         for name, t in tensors.items():
-            getattr(self.graph_batch, name).copy_(t)
+            dst = getattr(self.graph_batch, name)
+            if dst.data_ptr() != t.data_ptr():
+                dst.copy_(t)
         self.graph_kl_sum.zero_()
         return self.graph_kl_sum

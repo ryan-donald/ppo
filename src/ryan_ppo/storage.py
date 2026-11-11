@@ -51,6 +51,9 @@ class RolloutStorage:
         self.truncs = torch.zeros(num_steps, num_envs, device=device)
         self.term_rewards = torch.zeros(num_steps, num_envs, num_terms, device=device)
         self.mus = torch.zeros(num_steps, num_envs, action_dim, device=device)
+        self.values = torch.zeros(num_steps, num_envs, device=device)
+        self.advantages = torch.zeros(num_steps, num_envs, device=device)
+        self.returns = torch.zeros(num_steps, num_envs, device=device)
 
     def flatten(
         self,

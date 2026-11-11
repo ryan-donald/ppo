@@ -130,6 +130,13 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
     )
     # handles rollout stepping, allows for graph capture for performance.
     rollout = RolloutStepper(agent, storage, step_dt)
+    batch = storage.flatten(
+        returns=storage.returns,
+        advantages=storage.advantages,
+        values_old=storage.values,
+        std_old=rollout.std,
+    )
+    agent.use_fixed_batch(batch)
     rollout_timer = PhaseTimer(device)
     preparation_timer = PhaseTimer(device)
     update_timer = PhaseTimer(device)
@@ -155,7 +162,7 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
 
         # critic values for the whole rollout in one batched forward pass.
         with torch.no_grad():
-            values = agent.evaluate_values(storage.states)
+            storage.values.copy_(agent.evaluate_values(storage.states))
             next_value = agent.evaluate_values(policy_obs(state))
 
         # accumulate episode/term rewards
@@ -164,19 +171,19 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
         # compute GAE advantages and returns
         with profiler.zone(4, "compute_gae"):
             advantages, returns = agent.compute_gae(
-                storage.rewards, values, storage.dones, storage.truncs, next_value
+                storage.rewards,
+                storage.values,
+                storage.dones,
+                storage.truncs,
+                next_value,
             )
+            storage.advantages.copy_(advantages)
+            storage.returns.copy_(returns)
 
         # update actor and critic networks
         preparation_timer.stop()
         update_timer.start()
         with profiler.zone(5, "update"):
-            batch = storage.flatten(
-                returns=returns,
-                advantages=advantages,
-                values_old=values,
-                std_old=rollout.std,
-            )
             mean_kl = agent.update(
                 batch,
                 epochs=cfg.num_learning_epochs,
