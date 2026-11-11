@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import random
 import sys
 import time
@@ -70,6 +71,11 @@ class PhaseTimer:
         return self.elapsed
 
 
+@functools.cache
+def warmup_stream() -> torch.cuda.Stream:
+    return torch.cuda.Stream()
+
+
 class CapturedStep:
     """
     calls fn eagerly for its first calls, then captures it as a CUDA graph and
@@ -86,7 +92,7 @@ class CapturedStep:
         if self.graph is not None:
             self.graph.replay()
         elif self.warmup_left > 0:
-            stream = torch.cuda.Stream()
+            stream = warmup_stream()
             stream.wait_stream(torch.cuda.current_stream())
             with torch.cuda.stream(stream):
                 self.fn()
