@@ -148,6 +148,25 @@ def test_train_agent_resumes_from_checkpoint(logged):
     assert env.common_step_counter == 4 * NUM_STEPS_PER_ENV
 
 
+class FakeDirectEnv:
+    # the same task without a reward manager, as in the direct workflow.
+    def __init__(self) -> None:
+        self.env = FakeReachEnv()
+        self.unwrapped = self
+
+    def __getattr__(self, name):
+        if name == "reward_manager":
+            raise AttributeError(name)
+        return getattr(self.env, name)
+
+
+def test_train_agent_runs_without_a_reward_manager(logged):
+    run(make_args(max_iterations=3), env=FakeDirectEnv())
+
+    assert [d["step"] for d in logged] == [0, 1, 2]
+    assert not any(key.startswith("rewards/") for key in logged[-1])
+
+
 class InterruptedEnv(FakeReachEnv):
     # sends ctrl+c partway through the second iteration's rollout, counting the
     # normalizer warm-up rollout and the first iteration before it.

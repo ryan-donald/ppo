@@ -96,8 +96,15 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
         state = warmup_normalization(env, agent, state, cfg.num_steps_per_env)
 
     # per-term reward logging
-    reward_manager = env.unwrapped.reward_manager
-    term_names = reward_manager.active_terms
+    reward_manager = getattr(env.unwrapped, "reward_manager", None)
+    if reward_manager is None:
+        # direct
+        term_names = []
+        step_term_rewards = torch.zeros(num_envs, 0, device=device)
+    else:
+        # manager based
+        term_names = reward_manager.active_terms
+        step_term_rewards = reward_manager._step_reward
     step_dt = env.unwrapped.step_dt
 
     # tracks episode/term rewards across each rollout, forward-filling reward stats
@@ -153,9 +160,7 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
                 state, reward, terminated, truncated, info = env.step(action)
 
             # store rollout data.
-            rollout.record(
-                step, reward, terminated, truncated, reward_manager._step_reward
-            )
+            rollout.record(step, reward, terminated, truncated, step_term_rewards)
 
         rollout_timer.stop()
         preparation_timer.start()
