@@ -8,33 +8,33 @@ I benchmarked this implementation against the four RL libraries bundled with Isa
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **1,946,720** | **67** | **4** | 3,878 | — |
-| skrl | 1,113,700 | 118 | 41 | 3,554 | 1.75× |
-| rl_games | 1,094,944 | 120 | 40 | 3,574 | 1.78× |
-| rsl_rl | 1,069,663 | 123 | 45 | 3,556 | 1.82× |
-| sb3 | 662,625 | 198 | — | 3,546 | 2.94× |
+| **ryan_ppo (this repo)** | **1,982,470** | **66** | **4** | 3,860 | — |
+| skrl | 1,113,700 | 118 | 41 | 3,554 | 1.78× |
+| rl_games | 1,094,944 | 120 | 40 | 3,574 | 1.81× |
+| rsl_rl | 1,069,663 | 123 | 45 | 3,556 | 1.85× |
+| sb3 | 662,625 | 198 | — | 3,546 | 2.99× |
 
 **Ant** — 32 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **999,627** | **262** | **27** | 5,126 | — |
-| skrl | 887,326 | 295 | 57 | 4,628 | 1.13× |
-| rl_games | 855,095 | 307 | 55 | 4,648 | 1.17× |
-| rsl_rl | 813,526 | 322 | 62 | 4,618 | 1.23× |
-| sb3 | 480,713 | 545 | — | 4,468 | 2.08× |
+| **ryan_ppo (this repo)** | **1,012,550** | **259** | **26** | 4,810 | — |
+| skrl | 887,326 | 295 | 57 | 4,628 | 1.14× |
+| rl_games | 855,095 | 307 | 55 | 4,648 | 1.18× |
+| rsl_rl | 813,526 | 322 | 62 | 4,618 | 1.24× |
+| sb3 | 480,713 | 545 | — | 4,468 | 2.11× |
 
 **Reach** — 24 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,042,640** | **96** | **11** | 4,602 | — |
-| skrl | 805,616 | 244 | 151 | 4,178 | 2.54× |
-| rl_games | 763,976 | 257 | 157 | 4,186 | 2.67× |
-| rsl_rl | 558,209 | 352 | 186 | 4,184 | 3.66× |
-| sb3 | 490,714 | 401 | — | 3,970 | 4.16× |
+| **ryan_ppo (this repo)** | **2,050,365** | **96** | **11** | 4,476 | — |
+| skrl | 805,616 | 244 | 151 | 4,178 | 2.55× |
+| rl_games | 763,976 | 257 | 157 | 4,186 | 2.68× |
+| rsl_rl | 558,209 | 352 | 186 | 4,184 | 3.67× |
+| sb3 | 490,714 | 401 | — | 3,970 | 4.18× |
 
-`ryan_ppo` has the highest throughput on every task: 1.13–2.54× the next-fastest library and 2.08–4.16× sb3. For every task, the execution time for the physics is largely unchanged library to library, and the library implementation controls the interface of the agent with the physics, and the update steps of the PPO algorithm. My library has a significantly faster update portion, and some of the surrounding framework for the rollouts is also optimized better.
+`ryan_ppo` has the highest throughput on every task: 1.14–2.55× the next-fastest library and 2.11–4.18× sb3. For every task, the execution time for the physics is largely unchanged library to library, and the library implementation controls the interface of the agent with the physics, and the update steps of the PPO algorithm. My library has a significantly faster update portion, and some of the surrounding framework for the rollouts is also optimized better.
 
 ## Faster environments
 
@@ -44,7 +44,7 @@ Each of the three tasks also has a direct workflow version running on Newton (Mu
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **4,003,560** | **33** | **4** | 834 | — |
+| **ryan_ppo (this repo)** | **4,005,358** | **33** | **4** | 816 | — |
 | skrl | 1,751,637 | 75 | 35 | 534 | 2.29× |
 | rl_games | 1,716,817 | 76 | 34 | 552 | 2.33× |
 | rsl_rl | 1,687,069 | 78 | 38 | 534 | 2.37× |
@@ -54,21 +54,21 @@ Each of the three tasks also has a direct workflow version running on Newton (Mu
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,036,439** | **129** | **27** | 2,098 | — |
-| rl_games | 1,548,980 | 169 | 50 | 1,386 | 1.31× |
+| **ryan_ppo (this repo)** | **2,046,705** | **128** | **26** | 1,782 | — |
+| rl_games | 1,548,980 | 169 | 50 | 1,386 | 1.32× |
 | skrl | 1,547,217 | 169 | 54 | 1,364 | 1.32× |
-| rsl_rl | 1,372,037 | 191 | 59 | 1,358 | 1.48× |
-| sb3 | 652,823 | 402 | — | 1,206 | 3.12× |
+| rsl_rl | 1,372,037 | 191 | 59 | 1,358 | 1.49× |
+| sb3 | 652,823 | 402 | — | 1,206 | 3.14× |
 
 **Reach (direct, Newton)** — 24 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,426,587** | **81** | **11** | 1,508 | — |
-| skrl | 1,005,592 | 196 | 124 | 1,134 | 2.41× |
-| rl_games | 943,847 | 208 | 134 | 1,138 | 2.57× |
-| sb3 | 576,920 | 341 | — | 1,052 | 4.21× |
-| rsl_rl | 473,407 | 415 | 150 | 1,136 | 5.13× |
+| **ryan_ppo (this repo)** | **2,389,356** | **82** | **12** | 1,358 | — |
+| skrl | 1,005,592 | 196 | 124 | 1,134 | 2.38× |
+| rl_games | 943,847 | 208 | 134 | 1,138 | 2.53× |
+| sb3 | 576,920 | 341 | — | 1,052 | 4.14× |
+| rsl_rl | 473,407 | 415 | 150 | 1,136 | 5.05× |
 
 ## Steel physics
 
@@ -78,31 +78,31 @@ Each of the three tasks also has a direct workflow version running on Newton (Mu
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **3,803,023** | **34** | **4** | 822 | — |
-| skrl | 1,677,103 | 78 | 35 | 500 | 2.27× |
-| rsl_rl | 1,637,661 | 80 | 38 | 500 | 2.32× |
-| rl_games | 1,615,584 | 81 | 36 | 518 | 2.35× |
-| sb3 | 874,491 | 150 | — | 492 | 4.35× |
+| **ryan_ppo (this repo)** | **3,894,669** | **34** | **4** | 806 | — |
+| skrl | 1,677,103 | 78 | 35 | 500 | 2.32× |
+| rsl_rl | 1,637,661 | 80 | 38 | 500 | 2.38× |
+| rl_games | 1,615,584 | 81 | 36 | 518 | 2.41× |
+| sb3 | 874,491 | 150 | — | 492 | 4.45× |
 
 **Ant (Steel)** — 32 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,390,414** | **110** | **27** | 1,828 | — |
-| rl_games | 1,687,209 | 155 | 50 | 1,316 | 1.42× |
-| skrl | 1,679,534 | 156 | 55 | 1,294 | 1.42× |
-| rsl_rl | 1,303,442 | 201 | 59 | 1,284 | 1.83× |
-| sb3 | 631,211 | 415 | — | 1,136 | 3.79× |
+| **ryan_ppo (this repo)** | **2,337,349** | **112** | **26** | 1,512 | — |
+| rl_games | 1,687,209 | 155 | 50 | 1,316 | 1.39× |
+| skrl | 1,679,534 | 156 | 55 | 1,294 | 1.39× |
+| rsl_rl | 1,303,442 | 201 | 59 | 1,284 | 1.79× |
+| sb3 | 631,211 | 415 | — | 1,136 | 3.70× |
 
 **Reach (Steel)** — 24 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,710,204** | **73** | **11** | 1,266 | — |
-| skrl | 971,766 | 202 | 127 | 806 | 2.79× |
-| rl_games | 930,310 | 211 | 136 | 814 | 2.91× |
-| rsl_rl | 707,047 | 278 | 148 | 808 | 3.83× |
-| sb3 | 572,045 | 344 | — | 724 | 4.74× |
+| **ryan_ppo (this repo)** | **2,692,459** | **73** | **12** | 1,102 | — |
+| skrl | 971,766 | 202 | 127 | 806 | 2.77× |
+| rl_games | 930,310 | 211 | 136 | 814 | 2.89× |
+| rsl_rl | 707,047 | 278 | 148 | 808 | 3.81× |
+| sb3 | 572,045 | 344 | — | 724 | 4.71× |
 
 
 ## Direct workflow w/ Steel physics
@@ -111,31 +111,31 @@ Each of the three tasks also has a direct workflow version running on Newton (Mu
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **4,659,909** | **28** | **4** | 798 | — |
-| skrl | 1,821,141 | 72 | 36 | 500 | 2.56× |
-| rsl_rl | 1,788,708 | 73 | 38 | 498 | 2.61× |
-| rl_games | 1,781,958 | 74 | 36 | 516 | 2.62× |
-| sb3 | 904,485 | 145 | — | 490 | 5.15× |
+| **ryan_ppo (this repo)** | **4,579,704** | **29** | **4** | 736 | — |
+| skrl | 1,821,141 | 72 | 36 | 500 | 2.51× |
+| rsl_rl | 1,788,708 | 73 | 38 | 498 | 2.56× |
+| rl_games | 1,781,958 | 74 | 36 | 516 | 2.57× |
+| sb3 | 904,485 | 145 | — | 490 | 5.06× |
 
 **Ant (direct, Steel)** — 32 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **2,782,213** | **94** | **27** | 2,026 | — |
-| rl_games | 1,901,471 | 138 | 50 | 1,316 | 1.46× |
-| skrl | 1,896,535 | 138 | 55 | 1,294 | 1.47× |
-| rsl_rl | 1,478,435 | 177 | 58 | 1,286 | 1.88× |
-| sb3 | 657,210 | 399 | — | 1,136 | 4.23× |
+| **ryan_ppo (this repo)** | **2,804,133** | **93** | **26** | 1,712 | — |
+| rl_games | 1,901,471 | 138 | 50 | 1,316 | 1.47× |
+| skrl | 1,896,535 | 138 | 55 | 1,294 | 1.48× |
+| rsl_rl | 1,478,435 | 177 | 58 | 1,286 | 1.90× |
+| sb3 | 657,210 | 399 | — | 1,136 | 4.27× |
 
 **Reach (direct, Steel)** — 24 steps/env
 
 | Framework | Throughput (steps/s) | Iteration (ms) | Update (ms) | Peak VRAM (MiB) | ryan_ppo speedup |
 |---|---:|---:|---:|---:|---:|
-| **ryan_ppo (this repo)** | **3,324,592** | **59** | **11** | 1,282 | — |
-| skrl | 1,047,599 | 188 | 128 | 908 | 3.17× |
-| rl_games | 1,019,757 | 193 | 133 | 914 | 3.26× |
-| rsl_rl | 735,132 | 267 | 151 | 910 | 4.52× |
-| sb3 | 598,857 | 328 | — | 824 | 5.55× |
+| **ryan_ppo (this repo)** | **3,279,439** | **60** | **12** | 1,118 | — |
+| skrl | 1,047,599 | 188 | 128 | 908 | 3.13× |
+| rl_games | 1,019,757 | 193 | 133 | 914 | 3.22× |
+| rsl_rl | 735,132 | 267 | 151 | 910 | 4.46× |
+| sb3 | 598,857 | 328 | — | 824 | 5.48× |
 
 ## Learning
 
@@ -186,7 +186,7 @@ Peak VRAM (MiB) with these configs, measured on separate 100-iteration runs:
 
 | Framework | Cartpole | Ant | Franka Reach |
 |---|---:|---:|---:|
-| **ryan_ppo (this repo)** | 3,846 | 5,090 | 4,628 |
+| **ryan_ppo (this repo)** | 3,816 | 4,788 | 4,516 |
 | rsl_rl | 3,554 | 5,068 | 4,224 |
 | skrl | 3,532 | 4,544 | 4,284 |
 | rl_games | 3,528 | 4,386 | 4,286 |
