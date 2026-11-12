@@ -6,7 +6,8 @@ import torch
 
 from ryan_ppo.config import TrainConfig
 from ryan_ppo.ppo import PPOAgent
-from ryan_ppo.storage import RolloutBatch
+from ryan_ppo.rollout import RolloutStepper
+from ryan_ppo.storage import RolloutBatch, RolloutStorage
 from ryan_ppo.utils import warmup_normalization
 
 
@@ -368,6 +369,22 @@ def test_warmup_normalization_seeds_statistics_from_stepped_obs():
     torch.testing.assert_close(
         agent.obs_normalizer.var, torch.full((4,), 2 / 3), rtol=0, atol=1e-3
     )
+
+
+def test_rollout_stores_the_critic_value_of_each_state():
+    torch.manual_seed(13)
+    agent = make_agent(4, 2, [8, 8])
+    storage = RolloutStorage(3, 16, 4, 2, 1, torch.device("cpu"))
+    rollout = RolloutStepper(agent, storage, step_dt=0.02)
+    reward = torch.zeros(16)
+    done = torch.zeros(16, dtype=torch.bool)
+    for step in range(storage.num_steps):
+        rollout.act(torch.randn(16, 4))
+        rollout.record(step, reward, done, done, torch.zeros(16, 1))
+
+    with torch.no_grad():
+        expected = agent.evaluate_values(storage.states)
+    torch.testing.assert_close(storage.values, expected)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="graph update is CUDA-only")

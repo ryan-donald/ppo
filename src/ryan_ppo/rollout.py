@@ -30,6 +30,7 @@ class RolloutStepper:
         self.action = torch.zeros(num_envs, action_dim, device=device)
         self.log_prob = torch.zeros(num_envs, device=device)
         self.mu = torch.zeros(num_envs, action_dim, device=device)
+        self.value = torch.zeros(num_envs, device=device)
         # state independent, so the same for the whole rollout.
         self.std = torch.zeros(action_dim, device=device)
         self.reward = torch.zeros(num_envs, device=device)
@@ -72,10 +73,12 @@ class RolloutStepper:
     def compute_action(self) -> None:
         with torch.no_grad():
             action, log_prob, mu, std = self.agent.act(self.state, self.noise)
+            value = self.agent.evaluate_values(self.state)
         self.action.copy_(action)
         self.log_prob.copy_(log_prob)
         self.mu.copy_(mu)
         self.std.copy_(std)
+        self.value.copy_(value)
 
     def store_step(self, step: int) -> None:
         storage = self.storage
@@ -88,3 +91,4 @@ class RolloutStepper:
         storage.truncs[step] = self.truncated.float()
         storage.term_rewards[step] = self.term_reward * self.step_dt
         storage.mus[step] = self.mu
+        storage.values[step] = self.value

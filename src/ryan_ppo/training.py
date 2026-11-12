@@ -160,9 +160,8 @@ def train_agent(env, args_cli, wandb_project: str, profiler: Profiler) -> None:
         rollout_timer.stop()
         preparation_timer.start()
 
-        # critic values for the whole rollout in one batched forward pass.
+        # bootstrap value for the state after the last step.
         with torch.no_grad():
-            storage.values.copy_(agent.evaluate_values(storage.states))
             next_value = agent.evaluate_values(policy_obs(state))
 
         # accumulate episode/term rewards
